@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 
 from datetime import timedelta, datetime
 
-from pydantic.v1.typing import test_type
+
 
 from bot.db.crud.bike import get_bike_by_type, get_bike_by_id
 from bot.db.crud.user import get_user, add_user
@@ -62,7 +62,7 @@ async def start_command(message: Message):
                     InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                 ]
             ])
-    except IndexError:
+    except TypeError:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
