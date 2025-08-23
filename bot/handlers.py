@@ -1,4 +1,4 @@
-
+from gettext import textdomain
 
 from aiogram import Router, F
 from aiogram.fsm.state import StatesGroup, State
@@ -18,50 +18,81 @@ from datetime import timedelta, datetime
 
 
 from bot.db.crud.bike import get_bike_by_type, get_bike_by_id
-from bot.db.crud.user import get_user, add_user
-
-
+from bot.db.crud.mix_conn import rent_bike
+from bot.db.crud.rent_data import add_rent_data, get_data_rents, get_current_rent
+from bot.db.crud.user import get_user, add_user, rent_scooter_crud, get_all_users
+from bot.db.models import async_sess
 
 router = Router()
 
+
 @router.message(CommandStart())
 async def start_command(message: Message):
-
-
     tg_id = message.from_user.id
     username = message.from_user.username
     user = await get_user(tg_id)
 
     if user is None:
         await add_user(tg_id, username)
-    try:
-        if user[3] is None:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
-                ],
-                [
-                    InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
-                ],
-                [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
-                    InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
-                ],
-                [
-                    InlineKeyboardButton(text='Пробная функция оплаты', callback_data='test_payment')
-                ]
-            ])
-        else:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
 
-                [
-                    InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
-                ],
-                [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
-                    InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
-                ]
-            ])
+
+
+    try:
+        if user[3] is None or user[3] == 'null':
+            if user[-1] == 'admin' or user[-1] == 'moderator':
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
+                    ],
+                    [
+                        InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                    ],
+                    [
+                        InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                        InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                    ],
+                    [
+                        InlineKeyboardButton(text='⚡ Админ панель', callback_data='admin_main')
+                    ]
+                ])
+            else:
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
+                    ],
+                    [
+                        InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                    ],
+                    [
+                        InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                        InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                    ]
+                ])
+        else:
+            if user[-1] == 'admin' or user[-1] == 'moderator':
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                    ],
+                    [
+                        InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                        InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                    ],
+                    [
+                        InlineKeyboardButton(text='⚡ Админ панель', callback_data='admin_main')
+                    ]
+                ])
+            else:
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                    ],
+                    [
+                        InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                        InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                    ]
+                ])
+
     except TypeError:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -73,37 +104,24 @@ async def start_command(message: Message):
             [
                 InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
                 InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
-            ],
-            [
-                InlineKeyboardButton(text='Пробная функция оплаты', callback_data='test_payment')
             ]
         ])
 
     welcome_text = (
         "🛵 <b>ХАЛК БАЙК - ПРОКАТ СКУТЕРОВ</b> 🟢\n\n"
-
         "⚡ <b>Почему выбирают нас:</b>\n"
         "✅ <b>Быстро</b> - оформление за 10 минут ⏱️\n"
         "💰 <b>Выгодно</b> - от 300₽/день\n"
         "🛡️ <b>Безопасно</b> - исправная техника + шлемы 🪖\n\n"
-
         "—————————————————\n"
         "📌 <b>Как начать?</b>\n"
         "1️⃣ Приходите на базу: <i>ул. Корницкого, 47</i> 📍\n"
         "2️⃣ Выбирайте скутер - парк всегда обновляется 🔄\n"
         "3️⃣ Подписываете договор - и получаете ключи! 🚀\n\n"
-
         "—————————————————\n"
-        "⏰ <i>Режим работы: пн-пт, 8:00-20:00</i>\n"
+        "⏰ <i>Режим работы: пн-пт, 10:00-20:00</i>\n"
         "❓ Есть вопросы? Жмите «Помощь» 💬"
     )
-
-
-
-
-
-
-
 
     await message.answer(
         text=welcome_text,
@@ -117,18 +135,18 @@ async def rent_scooter(callback: CallbackQuery):
 
     user = await get_user(tg_id)
 
-    print(user, ' посмотрел функцию аренду скутера (1)')
+    # print(user, ' посмотрел функцию аренду скутера (1)')
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text='Dio', callback_data='view_scooter-dio'),
-            InlineKeyboardButton(text='Jog', callback_data='view_scooter-jog')
+            InlineKeyboardButton(text='🏍️ Dio', callback_data='view_scooter-dio'),
+            InlineKeyboardButton(text='⚡ Jog', callback_data='view_scooter-jog')
         ],
         [
-            InlineKeyboardButton(text='Gear', callback_data='view_scooter-gear')
+            InlineKeyboardButton(text='🚀 Gear', callback_data='view_scooter-gear')
         ],
         [
-            InlineKeyboardButton(text='Назад', callback_data='main')
+            InlineKeyboardButton(text='◀️ Назад', callback_data='main')
         ]
     ])
 
@@ -168,7 +186,7 @@ async def main(callback: CallbackQuery):
 
     user = await get_user(tg_id)
 
-    print(user, ' вернулся в меню')
+    # print(user, ' вернулся в меню')
 
     tg_id = callback.from_user.id
     username = callback.from_user.username
@@ -177,33 +195,65 @@ async def main(callback: CallbackQuery):
     if user is None:
         await add_user(tg_id, username)
 
-    if user and user[3] is None:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
-            ],
-            [
-                InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
-            ],
-            [
-                InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
-                InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
-            ],
-            [
-                InlineKeyboardButton(text='Пробная функция оплаты', callback_data='test_payment')
-            ]
-        ])
-    else:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    if user and user[3] is None or user and user[3] == 'null':
+        if user[-1] == 'admin' or user[-1] == 'moderator':
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
+                ],
+                [
+                    InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                ],
+                [
+                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                ],
+                [
+                    InlineKeyboardButton(text='⚡ Админ панель', callback_data='admin_main')
+                ]
+            ])
+        else:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
+                ],
+                [
+                    InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                ],
+                [
+                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                ]
+            ])
 
-            [
-                InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
-            ],
-            [
-                InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
-                InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
-            ]
-        ])
+    else:
+        if user[-1] == 'admin' or user[-1] == 'moderator':
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
+                ],
+                [
+                    InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                ],
+                [
+                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                ],
+                [
+                    InlineKeyboardButton(text='⚡ Админ панель', callback_data='admin_main')
+                ]
+            ])
+        else:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+
+                [
+                    InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
+                ],
+                [
+                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                ]
+            ])
 
     welcome_text = (
         "🛵 <b>ХАЛК БАЙК - ПРОКАТ СКУТЕРОВ</b> 🟢\n\n"
@@ -220,7 +270,7 @@ async def main(callback: CallbackQuery):
         "3️⃣ Подписываете договор - и получаете ключи! 🚀\n\n"
 
         "—————————————————\n"
-        "⏰ <i>Режим работы: пн-пт, 8:00-20:00</i>\n"
+        "⏰ <i>Режим работы: пн-пт, 10:00-20:00</i>\n"
         "❓ Есть вопросы? Жмите «Помощь» 💬"
     )
 
@@ -230,48 +280,85 @@ async def main(callback: CallbackQuery):
         reply_markup=keyboard
     )
 
+
 @router.callback_query(F.data.split('-')[0] == 'view_scooter')
 async def change_scooter(callback: CallbackQuery):
     tg_id = callback.from_user.id
-
-    user = await get_user(tg_id)
-
-    print(user, ' выбирает скутер')
-
     data = callback.data.split('-')[1]
 
     bikes = await get_bike_by_type(data)
 
-    if bikes is None:
+    # Проверяем, есть ли свободные скутеры
+    free_bikes_available = False
+    if bikes:
+        for bike in bikes:
+            # bike[3] - это поле user (кто арендовал)
+            if bike[3] is None:  # Если скутер свободен
+                free_bikes_available = True
+                break
+
+    if not free_bikes_available:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text='Назад', callback_data='scooter')
             ]
         ])
-        await callback.message.edit_text(f'На данный момент {data} нет посмотрите другие варианты!', reply_markup=keyboard)
+        await callback.message.edit_text(
+            f'На данный момент {data} нет в наличии 😢\nПосмотрите другие варианты!',
+            reply_markup=keyboard
+        )
+        return
+
+    # Если есть свободные скутеры
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
 
     for bike in bikes:
-        keyboard.inline_keyboard.append(
+        # Показываем только свободные скутеры
+        if bike[3] is None:  # bike[3] - поле user (кто арендовал)
+            bike_icons = {
+                'dio': '🔵',
+                'jog': '🟢',
+                'gear': '🔴'
+            }
+            icon = bike_icons.get(bike[2].lower(), '🏍')
+
+            keyboard.inline_keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"{icon} {bike[2].upper()} #{bike[1]}",
+                        callback_data=f"bikerent-{bike[0]}"
+                    )
+                ]
+            )
+
+    # Если после фильтрации не осталось свободных скутеров (маловероятно, но на всякий случай)
+    if not keyboard.inline_keyboard:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text=f'{bike[2]} #{bike[1]}', callback_data=f'bikerent-{bike[0]}')
+                InlineKeyboardButton(text='Назад', callback_data='scooter')
             ]
+        ])
+        await callback.message.edit_text(
+            f'На данный момент {data} нет в наличии 😢\nПосмотрите другие варианты!',
+            reply_markup=keyboard
         )
+        return
+
     keyboard.inline_keyboard.append(
         [
             InlineKeyboardButton(text='↩️ Назад', callback_data='scooter')
         ]
     )
-    await callback.message.edit_text('Скутеры на выбор: ', reply_markup=keyboard)
+    await callback.message.edit_text('🚀 Свободные скутеры на выбор: ', reply_markup=keyboard)
 
 
 @router.callback_query(F.data.split('-')[0] == 'bikerent')
 async def bike_number(callback: CallbackQuery):
     tg_id = callback.from_user.id
 
-    user = await get_user(tg_id)
-
-    print(user, ' находится на карточке мотоцикла')
+    # user = await get_user(tg_id)
+    #
+    # print(user, ' находится на карточке мотоцикла')
 
     data = callback.data.split('-')[1]
     bike = await get_bike_by_id(data)
@@ -299,7 +386,7 @@ async def bike_number(callback: CallbackQuery):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text='🛵 Арендовать', callback_data=f'rent_scooter_but-{bike[0]}'),
+            InlineKeyboardButton(text='🛵 Арендовать', callback_data=f'period-{bike[0]}'),
             InlineKeyboardButton(text='📞 Поддержка', url='t.me/hulkbike_support')
         ],
         [
@@ -313,137 +400,567 @@ async def bike_number(callback: CallbackQuery):
         reply_markup=keyboard
     )
 
-@router.callback_query(F.data == 'test_payment')
-async def test_payment(callback: CallbackQuery, bot: Bot):
-    tg_id = callback.from_user.id
+# @router.callback_query(F.data == 'test_payment')
+# async def test_payment(callback: CallbackQuery, bot: Bot):
+#     tg_id = callback.from_user.id
+#
+#     user = await get_user(tg_id)
+#
+#     print(user, ' протестил функцию оплаты (1)')
+#
+#     payment_check = """
+#     <code>┌──────────────────────────────┐</code>
+#     <b>  � ЧЕК ОПЛАТЫ #A23245674</b>
+#     <code>├──────────────────────────────┤</code>
+#     <b>│ Модель:</b> Jog
+#     <b>│ Тариф:</b> Месяц
+#     <b>│ Начало:</b> 10.07.2025
+#     <b>│ Окончание:</b> 10.08.2025
+#     <code>├──────────────────────────────┤</code>
+#     <b>│ Итого к оплате:</b> <u>12000₽</u>
+#     <code>└──────────────────────────────┘</code>
+#
+#     ⚠️ <i>Ваша аренда завершается через 2 дня!</i>
+#     """
+#
+#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+#         [
+#             InlineKeyboardButton(text="🔄 Продлить аренду", callback_data=f"extend"),
+#             InlineKeyboardButton(text="⏳ Оплачу позже", callback_data="pay_later")
+#         ],
+#         [
+#             InlineKeyboardButton(text="❌ Не продлевать", callback_data=f"cancel")
+#         ],
+#         [
+#             InlineKeyboardButton(text="📞 Поддержка", url="t.me/hulkbike_support")
+#         ]
+#     ])
+#
+#     await bot.send_message(
+#         chat_id=callback.from_user.id,
+#         text=payment_check,
+#         parse_mode='HTML',
+#         reply_markup=keyboard
+#     )
 
-    user = await get_user(tg_id)
+# @router.callback_query(F.data == 'extend')
+# async def extend_bike(callback: CallbackQuery):
+#     tg_id = callback.from_user.id
+#
+#     user = await get_user(tg_id)
+#
+#     print(user, ' продлил оплату ')
+#
+#
+#     payment_success = f"""
+#     <code>┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓</code>
+#     <b>  💳 ОПЛАТА ПРОИЗВЕДЕНА  </b>
+#     <code>┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
+#     <b>│</b> 🔹 Номер заказа: <code>#A23245674</code>
+#     <b>│</b> 🔹 Сумма: <b>12000₽</b>
+#     <b>│</b> 🔹 Способ: <i>СБП</i>
+#     <code>┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
+#     <b>│</b> 🏍 Модель: <b>JOG</b>
+#     <b>│</b> ⏳ Срок аренды: <b>месяц</b>
+#     <b>│</b> 📍 Локация: <i>Краснодар</i>
+#     <code>┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛</code>
+#
+#     <b>✅ Ваш скутер готов к использованию!</b>
+#     <i>Приятной поездки и соблюдайте ПДД!</i> 🚦
+#     """
+#
+#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+#         [
+#             InlineKeyboardButton(text="🛵 Мой скутер", callback_data="my_bike"),
+#             InlineKeyboardButton(text="📊 Профиль", callback_data="profile")
+#         ],
+#         [
+#             InlineKeyboardButton(text="ℹ️ Помощь", callback_data="help"),
+#             InlineKeyboardButton(text="📝 Чек", callback_data=f"receipt")
+#         ],
+#         [
+#             InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")
+#         ]
+#     ])
+#     await callback.message.edit_text(
+#         text=payment_success,
+#         parse_mode='HTML',
+#         reply_markup=keyboard
+#     )
+#
+# @router.callback_query(F.data == 'pay_later')
+# async def pay_later(callback: CallbackQuery):
+#     await callback.message.delete()
+#
+#     tg_id = callback.from_user.id
+#
+#     user = await get_user(tg_id)
+#
+#     print(user, ' нажал напомнить позже про оплату ')
+#
+# @router.callback_query(F.data == 'cancel')
+# async def cancel_rent_handler(callback: CallbackQuery):
+#     tg_id = callback.from_user.id
+#
+#     user = await get_user(tg_id)
+#
+#     print(user, ' отменил оплату')
+#
+#     cancel_message = f"""
+# <code>┌──────────────────────────────┐</code>
+# <b>  🚫 АРЕНДА ОТМЕНЕНА  </b>
+# <code>├──────────────────────────────┤</code>
+# <b>│</b> 🔹 Скутер: <b>JOG</b>
+# <b>│</b> 🔹 Номер: <code>#27</code>
+# <code>├──────────────────────────────┤</code>
+# <b>│</b> ⏳ Время отмены: <i>{datetime.now().strftime('%d.%m %H:%M')}</i>
+# <b>│</b> ⏳ Конец аренды: <i>10.08.2025</i>
+# <code>└──────────────────────────────┛</code>
+#
+# <i>Скутер доступен для новой аренды.</i>
+# Спасибо, что пользовались Hulk Bike! 🛵💚
+# """
+#
+#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+#         [InlineKeyboardButton(text="📝 Оставить отзыв", callback_data="leave_feedback")],
+#         [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
+#     ])
+#
+#     await callback.message.edit_text(
+#         text=cancel_message,
+#         parse_mode="HTML",
+#         reply_markup=keyboard
+#     )
 
-    print(user, ' протестил функцию оплаты (1)')
+@router.callback_query(F.data.split('-')[0] == 'period')
+async def period(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
 
-    payment_check = """
-    <code>┌──────────────────────────────┐</code>
-    <b>  � ЧЕК ОПЛАТЫ #A23245674</b>  
-    <code>├──────────────────────────────┤</code>
-    <b>│ Модель:</b> Jog  
-    <b>│ Тариф:</b> Месяц  
-    <b>│ Начало:</b> 10.07.2025  
-    <b>│ Окончание:</b> 10.08.2025 
-    <code>├──────────────────────────────┤</code>
-    <b>│ Итого к оплате:</b> <u>12000₽</u>  
-    <code>└──────────────────────────────┘</code>
-
-    ⚠️ <i>Ваша аренда завершается через 2 дня!</i>
-    """
+    data = callback.data.split('-')[1]
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🔄 Продлить аренду", callback_data=f"extend"),
-            InlineKeyboardButton(text="⏳ Оплачу позже", callback_data="pay_later")
+            InlineKeyboardButton(text='📅 3 дня', callback_data=f'rent_scooter_but-{data}-3'),
+            InlineKeyboardButton(text='📅 7 дней', callback_data=f'rent_scooter_but-{data}-7')
         ],
         [
-            InlineKeyboardButton(text="❌ Не продлевать", callback_data=f"cancel")
+            InlineKeyboardButton(text='📅 30 дней', callback_data=f'rent_scooter_but-{data}-30')
         ],
         [
-            InlineKeyboardButton(text="📞 Поддержка", url="t.me/hulkbike_support")
+            InlineKeyboardButton(text='✏️ Выбрать вручную', callback_data=f'write_period-{data}')
         ]
     ])
 
-    await bot.send_message(
-        chat_id=callback.from_user.id,
-        text=payment_check,
-        parse_mode='HTML',
-        reply_markup=keyboard
-    )
-
-@router.callback_query(F.data == 'extend')
-async def extend_bike(callback: CallbackQuery):
-    tg_id = callback.from_user.id
-
-    user = await get_user(tg_id)
-
-    print(user, ' продлил оплату ')
-
-
-    payment_success = f"""
-    <code>┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓</code>
-    <b>  💳 ОПЛАТА ПРОИЗВЕДЕНА  </b>
-    <code>┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
-    <b>│</b> 🔹 Номер заказа: <code>#A23245674</code>
-    <b>│</b> 🔹 Сумма: <b>12000₽</b>
-    <b>│</b> 🔹 Способ: <i>СБП</i>
-    <code>┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
-    <b>│</b> 🏍 Модель: <b>JOG</b>
-    <b>│</b> ⏳ Срок аренды: <b>месяц</b>
-    <b>│</b> 📍 Локация: <i>Краснодар</i>
-    <code>┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛</code>
-
-    <b>✅ Ваш скутер готов к использованию!</b>
-    <i>Приятной поездки и соблюдайте ПДД!</i> 🚦
-    """
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🛵 Мой скутер", callback_data="my_bike"),
-            InlineKeyboardButton(text="📊 Профиль", callback_data="profile")
-        ],
-        [
-            InlineKeyboardButton(text="ℹ️ Помощь", callback_data="help"),
-            InlineKeyboardButton(text="📝 Чек", callback_data=f"receipt")
-        ],
-        [
-            InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")
-        ]
-    ])
     await callback.message.edit_text(
-        text=payment_success,
+        "🏍️ <b>ВЫБЕРИТЕ СРОК АРЕНДЫ</b>\n\n"
+        "🚀 <i>Готовы к поездке? Выбирайте удобный период:</i>\n\n"
+        "🔹 <b>3 дня</b> — идеально для теста\n"
+        "🔹 <b>7 дней</b> — оптимальный вариант\n"
+        "🔹 <b>30 дней</b> — максимальная выгода\n\n"
+        "💎 <i>Нужен другой срок? Укажите вручную</i>",
         parse_mode='HTML',
         reply_markup=keyboard
     )
+
+class SelectPeriod(StatesGroup):
+    change_period = State()
+
+
+
+@router.callback_query(F.data.split('-')[0] == 'write_period')
+async def write_period(callback: CallbackQuery, state: FSMContext):
+    data = callback.data.split('-')[1]  # достаём {data}
+    await state.update_data(rent_data=data)  # сохраняем в FSM
+    await state.set_state(SelectPeriod.change_period)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text='↩️ Назад', callback_data=f'period-{data}')
+        ]
+    ])
+
+    await callback.message.edit_text(
+        "✏️ <b>УКАЖИТЕ СРОК АРЕНДЫ</b>\n\n"
+        "📝 <i>Введите количество дней цифрами:</i>\n"
+        "• Например: 3, 5, 7, 10, 14...\n\n"
+        "⚠️ <b>Минимальный срок:</b> 3 дня\n"
+        "💡 <i>Чем дольше — тем выгоднее цена!</i>",
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+
+
+@router.message(SelectPeriod.change_period)
+async def state_period_handler(message: Message, state: FSMContext):
+    msg = message.text
+    data = await state.get_data()  # достаём все данные из FSM
+    rent_data = data.get("rent_data")  # достаём сохранённое {data}
+
+    if msg.isdigit():
+        days = int(msg)
+        if days >= 1:
+            # тут ты формируешь callback_data так же, как кнопка rent_scooter_but
+            callback_data = f"rent_scooter_but-{rent_data}-{days}"
+
+            # теперь можно вызвать напрямую хэндлер rent_scooter_but,
+            # или просто отправить inline кнопку
+            await message.answer(
+                f"⏳ Вы указали срок аренды: <b>{days} дней</b>.\n\n"
+                f"✅ Проверьте данные и подтвердите аренду, либо измените срок.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="✅ Подтвердить аренду",
+                            callback_data=callback_data
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🔄 Изменить срок аренды",
+                            callback_data=f"write_period-{rent_data}"
+                        )
+                    ]]
+                ), parse_mode='HTML'
+            )
+
+            await state.clear()
+        else:
+            await message.answer(
+                "⚠️ Минимальный срок аренды — <b>3 дня</b>.\n"
+                "Попробуйте ввести другое количество дней ⬇️", parse_mode='HTML'
+            )
+    else:
+        await message.answer(
+            "❌ Неверный формат ввода.\n\n"
+            "Пожалуйста, укажите количество дней цифрой, например: <b>5</b>", parse_mode='HTML'
+        )
+
+
+
+
+
+
+
+
+@router.callback_query(F.data.split('-')[0] == 'rent_scooter_but')
+async def but_rent(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    bike_id = int(callback.data.split('-')[1])
+    time = int(callback.data.split('-')[2])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]
+    ])
+
+    user_data, bike_data, rented_now = await rent_bike(tg_id, bike_id, time)
+
+    if time == 1:
+        text_time = "1 день"
+    elif time < 5:
+        text_time = f"{time} дня"
+    else:
+        text_time = f"{time} дней"
+
+    if rented_now:
+        await callback.message.edit_text(
+            f"🎉 Отличный выбор!\n\n"
+            f"🚴 Скутер <b>{bike_data[2]}</b> закреплён за вами на <b>{text_time}</b>.\n",
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+    else:
+        await callback.message.edit_text(
+            "⚠️ У вас уже есть активная аренда скутера!\n\n"
+            "Сначала завершите текущую аренду, а потом сможете взять новый 🚴",
+            reply_markup=keyboard
+        )
+
+@router.callback_query(F.data == 'profile')
+async def profile(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    user = await get_user(tg_id)
+
+    username = callback.from_user.username or "Без ника"
+    balance = user[4] if user[4] is not None else 0  # допустим, баланс на 5-й позиции
+    rented = user[3] and user[3] != 'null'
+
+    if rented:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🛵 Мой скутер", callback_data="my_scoot")
+            ],
+            [
+                InlineKeyboardButton(text="🗺 Карта выезда из города", callback_data="out_map"),
+                InlineKeyboardButton(text="📑 Документы на байк", callback_data="documents_bike")
+            ],
+            [
+                InlineKeyboardButton(text="💸 Мои долги", callback_data="my_debts")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="main")
+            ]
+        ])
+    else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🛵 Мой скутер", callback_data="my_scoot")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="main")
+            ]
+        ])
+
+    await callback.message.edit_text(
+        f"╔════════════════════╗\n"
+        f"   👤 <b>Профиль арендатора</b>\n"
+        f"╚════════════════════╝\n\n"
+        f"🔹 <b>Имя:</b> @{username}\n"
+        f"🛵 <b>Аренда:</b> {'Активна ✅' if rented else 'Нет 🚫'}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 Выберите действие ниже 👇",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+
 
 @router.callback_query(F.data == 'pay_later')
 async def pay_later(callback: CallbackQuery):
-    await callback.message.delete()
-
-    tg_id = callback.from_user.id
-
-    user = await get_user(tg_id)
-
-    print(user, ' нажал напомнить позже про оплату ')
-
-@router.callback_query(F.data == 'cancel')
-async def cancel_rent_handler(callback: CallbackQuery):
-    tg_id = callback.from_user.id
-
-    user = await get_user(tg_id)
-
-    print(user, ' отменил оплату')
-
-    cancel_message = f"""
-<code>┌──────────────────────────────┐</code>
-<b>  🚫 АРЕНДА ОТМЕНЕНА  </b>
-<code>├──────────────────────────────┤</code>
-<b>│</b> 🔹 Скутер: <b>JOG</b>
-<b>│</b> 🔹 Номер: <code>#27</code>
-<code>├──────────────────────────────┤</code>
-<b>│</b> ⏳ Время отмены: <i>{datetime.now().strftime('%d.%m %H:%M')}</i>
-<b>│</b> ⏳ Конец аренды: <i>10.08.2025</i>
-<code>└──────────────────────────────┛</code>
-
-<i>Скутер доступен для новой аренды.</i>
-Спасибо, что пользовались Hulk Bike! 🛵💚
-"""
-
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 Оставить отзыв", callback_data="leave_feedback")],
-        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
+        [InlineKeyboardButton(text="📊 Личный кабинет", callback_data="profile")]
     ])
 
     await callback.message.edit_text(
-        text=cancel_message,
-        parse_mode="HTML",
+        "💳 <b>ОПЛАТА ОТЛОЖЕНА</b>\n\n"
+        "✅ <i>Вы можете оплатить аренду позже</i>\n\n"
+        "📋 <b>Для оплаты перейдите в:</b>\n"
+        "▫️ Личный кабинет → Мои аренды\n"
+        "▫️ Выберите текущую аренду\n"
+        "▫️ Нажмите \"Оплатить\"\n\n"
+        "⚠️ <b>Внимание!</b>\n"
+        "⏰ <i>Ваша аренда заканчивается через день</i>\n\n"
+        "💡 <i>Не забудьте завершить оплату вовремя</i>",
+        parse_mode='HTML',
         reply_markup=keyboard
     )
+
+
+# Админ панель
+
+
+@router.callback_query(F.data == 'admin_main')
+async def admin_menu(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    user = await get_user(tg_id)
+
+
+    if user[-1] == 'moderator':
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 Все пользователи", callback_data="view_users")
+                ],
+                [
+                    InlineKeyboardButton(text="⚡ Сделать/Снять admin", callback_data="toggle_admin")
+                ],
+                [
+                    InlineKeyboardButton(text="⛔ Забанить/Разбанить", callback_data="toggle_ban")
+                ],
+
+                [
+                    InlineKeyboardButton(text='🛵 Посмотреть активные аренды', callback_data='active_rents')
+                ],
+                [
+                    InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
+                ]
+            ]
+        )
+    else:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 Все пользователи", callback_data="view_users")
+                ],
+                [
+                    InlineKeyboardButton(text="⛔ Забанить/Разбанить", callback_data="toggle_ban")
+                ],
+                [
+                    InlineKeyboardButton(text='🛵 Посмотреть активные аренды', callback_data='active_rents')
+                ],
+                [
+                    InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
+                ]
+            ]
+        )
+
+    await callback.message.edit_text(
+        "🛠 Добро пожаловать в админ-панель!\n\n"
+        "Выберите действие ниже:",
+        reply_markup=keyboard
+    )
+
+@router.callback_query(F.data == 'view_users')
+async def view_users_admin(callback: CallbackQuery):
+    users_list = await get_all_users()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+
+    for user in users_list:
+        keyboard.inline_keyboard.append(
+            [
+                InlineKeyboardButton(text=f"@{user[2]}", callback_data=f'view_user-{user[1]}')
+            ]
+        )
+    keyboard.inline_keyboard.append(
+        [
+            InlineKeyboardButton(text='В админ меню', callback_data='admin_main')
+        ]
+    )
+
+    await callback.message.edit_text('Клиенты', reply_markup=keyboard)
+
+
+@router.callback_query(F.data.split('-')[0] == 'view_user')
+async def view_select_user_admin(callback: CallbackQuery):
+    data = callback.data.split('-')[1]
+    user = await get_user(data)
+    user_card = f"""
+    <code>┌──────────────────────────────┐</code>
+    <b>  👤 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ  </b>
+    <code>├──────────────────────────────┤</code>
+    <b>│</b> 🔹 ID: <code>#{user[0]}</code>
+    <b>│</b> 🔹 TG: @{user[2] or 'не указан'}
+    <b>│</b> 🔹 TG ID: <code>{user[1]}</code>
+    <code>├──────────────────────────────┤</code>
+    <b>│</b> 🏍 Текущий скутер: 
+    <b>│</b>   ▫️ ID: <b>{user[3] or '—'}</b>
+    <b>│</b>   ▫️ Модель: <b>{user[4] or '—'}</b>
+    <code>├──────────────────────────────┤</code>
+    <b>│</b> 👥 Рефералы: <b>{user[5] or 0}</b>
+    <b>│</b> 🚫 Статус: <b>{'🔴 Заблокирован' if user[6] else '🟢 Активен'}</b>
+    <code>└──────────────────────────────┘</code>
+    """
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📊 История аренд", callback_data=f"rent_history-{user[1]}")
+        ],
+        [
+            InlineKeyboardButton(text="🎁 Реферальная программа", callback_data="referral_user")
+        ],
+        [
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings_user")
+        ],
+        [
+            InlineKeyboardButton(text='↩️ Назад', callback_data='admin_main')
+        ]
+    ])
+
+
+
+
+    await callback.message.edit_text(text=user_card, reply_markup=keyboard, parse_mode='HTML')
+
+
+@router.callback_query(F.data.split('-')[0] == 'rent_history')
+async def check_rent_history(callback: CallbackQuery):
+    data = callback.data.split('-')[1]
+    rents = await get_data_rents(data)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    user = await get_user(data)
+
+    if rents:
+        for rent in rents:
+            # Определяем иконку статуса
+            status_icon = "🟢" if rent[5] == 'active' else "🔴"  # rent[5] - статус
+
+            keyboard.inline_keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=f'{status_icon} Аренда #{rent[0]}',
+                        callback_data=f'history_rents-{rent[0]}'
+                    )
+                ]
+            )
+
+        keyboard.inline_keyboard.append(
+            [
+                InlineKeyboardButton(text='↩️ Назад', callback_data=f'view_user-{user[1]}')
+            ]
+        )
+
+        await callback.message.answer(
+            f"📋 <b>ИСТОРИЯ АРЕНД</b>\n"
+            f"👤 <i>Пользователь: @{user[2] or 'Неизвестный'}</i>\n\n"
+            f"🏍️ <b>Список всех поездок:</b>\n"
+            f"🟢 — активные\n"
+            f"🔴 — завершенные/отмененные",
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+    else:
+        keyboard.inline_keyboard.append(
+            [
+                InlineKeyboardButton(text='↩️ Назад', callback_data=f'view_user-{user[1]}')
+            ]
+        )
+
+        await callback.message.edit_text(
+            f'📭 <b>ИСТОРИЯ АРЕНД ПУСТА</b>\n\n'
+            f'✨ <i>У @{user[2] or "Неизвестного"} еще не было аренд скутеров</i>',
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+
+
+@router.callback_query(F.data.split('-')[0] == 'history_rents')
+async def current_rent_user_admin(callback: CallbackQuery):
+    data = callback.data.split('-')[1]
+    data_rent = await get_current_rent(data)
+
+
+    start_time = datetime.fromisoformat(data_rent[3]).strftime('%d.%m.%Y %H:%M')
+    end_time = datetime.fromisoformat(data_rent[4]).strftime('%d.%m.%Y %H:%M') if data_rent[4] else "Не завершена"
+
+
+    status_icons = {
+        'active': '🟢 Активна',
+        'unactive': '✅ Завершена',
+        'cancelled': '❌ Отменена',
+        'pending': '⏳ Ожидание'
+    }
+    status = status_icons.get(data_rent[5], data_rent[5])
+
+    rent_card = f"""
+<code>┌──────────────────────────────┐</code>
+<b>  📋 ДЕТАЛИ АРЕНДЫ #{data_rent[0]}  </b>
+<code>├──────────────────────────────┤</code>
+<b>│</b> 🆔 ID аренды: <code>#{data_rent[0]}</code>
+<b>│</b> 👤 ID пользователя: <code>{data_rent[1]}</code>
+<b>│</b> 🏍 ID скутера: <code>{data_rent[2]}</code>
+<code>├──────────────────────────────┤</code>
+<b>│</b> 🕐 Начало: <b>{start_time}</b>
+<b>│</b> 🕔 Окончание: <b>{end_time}</b>
+<b>│</b> 📊 Статус: <b>{status}</b>
+<code>└──────────────────────────────┛</code>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад к списку", callback_data=f"rent_history-{data_rent[1]}")]
+        ])
+
+    await callback.message.edit_text(
+        text=rent_card,
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+
+
+
+
+
+
+
 
 
 

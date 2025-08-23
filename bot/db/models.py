@@ -1,3 +1,5 @@
+from email.policy import default
+
 from sqlalchemy import String, Integer, Boolean, Float, DateTime
 from sqlalchemy.orm import Mapped
 from typing import Optional
@@ -31,6 +33,8 @@ class User(Base):
     refferals: Mapped[int] = mapped_column(default=0)
 
     ban: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    admin: Mapped[str] = mapped_column(String, default='user')
 
 class Bike(Base):
     __tablename__ = 'bikes'
@@ -83,9 +87,9 @@ class RentDetail(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
     bike_id: Mapped[int] = mapped_column(ForeignKey('bikes.id'))
+    nitified: Mapped[int] = mapped_column(Integer, default=0)
     start_time: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     end_time: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    actual_end_time: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(default='active')  # 'active'/'completed'/'cancelled'
 
 

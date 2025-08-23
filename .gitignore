@@ -1,0 +1,11 @@
+bot/config.py
+bot/rent-bike.db
+bot/test.py
+bot/.env
+.env
+.idea/
+__pycache__/
+*.pyc
+*.sqlite3
+test.py
+bot/db.sqlite3
