@@ -52,6 +52,14 @@ class Bike(Base):
 
     is_free: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    price_day: Mapped[int] = mapped_column(Integer)
+
+    price_week: Mapped[int] = mapped_column(Integer)
+
+    price_month: Mapped[int] = mapped_column(Integer)
+
+
+
 
 
 

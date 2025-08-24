@@ -1,9 +1,11 @@
 import aiosqlite
 
+DB_PATH = 'rent-bike.db'
+
 t = 'bikes'
 
 async def get_all_bikes():
-    async with aiosqlite.connect('rent-bike.db') as conn:
+    async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute(f"""
         SELECT * FROM {t}
@@ -13,7 +15,7 @@ async def get_all_bikes():
         return bikes
 
 async def get_bike_by_type(bike):
-    async with aiosqlite.connect('rent-bike.db') as conn:
+    async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute(f"""
         SELECT * FROM {t} WHERE bike_type = ? AND is_free = True
@@ -23,7 +25,7 @@ async def get_bike_by_type(bike):
         return bikes
 
 async def get_bike_by_id(bike_id):
-    async with aiosqlite.connect('rent-bike.db') as conn:
+    async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute(f"""
         SELECT * FROM {t} WHERE id = ?
@@ -34,7 +36,7 @@ async def get_bike_by_id(bike_id):
         return result
 
 async def change_status_not_free(bike_id, tg_id):
-    async with aiosqlite.connect('rent-bike.db') as conn:
+    async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute(f"""
         UPDATE {t} 
@@ -43,5 +45,30 @@ async def change_status_not_free(bike_id, tg_id):
         """, (tg_id, bike_id))
 
         await conn.commit()
+
+
+async def get_price():
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("""
+        SELECT model, price_day, price_week, price_month
+        FROM bikes
+        """)
+
+        prices = await cursor.fetchall()
+
+        # Используем словарь для хранения цен
+        price_dict = {}
+
+        for bike in prices:
+            model = bike[0]  # название модели
+            price_dict[model] = {
+                'day': bike[1],
+                'week': bike[2],
+                'month': bike[3]
+            }
+
+        return price_dict
+
 
 
