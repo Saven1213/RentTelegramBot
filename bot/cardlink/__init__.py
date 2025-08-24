@@ -1,4 +1,4 @@
-from client import CardLink
+from .client import CardLink
 
 
 __all__ = [

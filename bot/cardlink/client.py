@@ -4,22 +4,22 @@ import certifi
 from aiohttp import TCPConnector
 from aiohttp import ClientSession
 import loggers
-from api.base import BaseSession
-from error import APIError
-from methods.create_full_refund import create_full_refund_method
-from methods.create_invoice import create_invoice_method
-from methods.create_partial_refund import create_partial_refund_method
-from methods.create_personal_payout import create_personal_payout_method
-from methods.create_regular_payout import create_payout_credit_card_method, create_payout_sbp_method, create_payout_crypto_method, create_payout_steam_method
-from methods.get_balance import get_balance_method
-from methods.invoice_status import get_invoice_status_method
-from methods.payment_status import get_payment_status_method
-from methods.payout_status import get_payout_status_method
-from methods.search_invoice import search_invoice_method
-from methods.search_payments import search_payments_method
-from methods.search_payout import search_payout_method
-from methods.toggle_activity import toggle_activity_method
-from methods.token_valid import token_valid
+from .api.base import BaseSession
+from .error import APIError
+from .methods.create_full_refund import create_full_refund_method
+from .methods.create_invoice import create_invoice_method
+from .methods.create_partial_refund import create_partial_refund_method
+from .methods.create_personal_payout import create_personal_payout_method
+from .methods.create_regular_payout import create_payout_credit_card_method, create_payout_sbp_method, create_payout_crypto_method, create_payout_steam_method
+from .methods.get_balance import get_balance_method
+from .methods.invoice_status import get_invoice_status_method
+from .methods.payment_status import get_payment_status_method
+from .methods.payout_status import get_payout_status_method
+from .methods.search_invoice import search_invoice_method
+from .methods.search_payments import search_payments_method
+from .methods.search_payout import search_payout_method
+from .methods.toggle_activity import toggle_activity_method
+from .methods.token_valid import token_valid
 
 
 class CardLink(BaseSession):

@@ -21,6 +21,7 @@ from bot.db.crud.rent_data import get_data_rents, get_current_rent
 from bot.db.crud.user import get_user, add_user, get_all_users
 from bot.cardlink.api_types.CreatedInvoice import CreatedInvoice
 
+
 router = Router()
 
 
