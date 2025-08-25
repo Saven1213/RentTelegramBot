@@ -47,28 +47,29 @@ async def change_status_not_free(bike_id, tg_id):
         await conn.commit()
 
 
-async def get_price():
+async def get_price(model):
     async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute("""
-        SELECT model, price_day, price_week, price_month
+        SELECT price_day, price_week, price_month
         FROM bikes
-        """)
+        WHERE id = ?
+        """, (model, ))
 
-        prices = await cursor.fetchall()
+        prices = await cursor.fetchone()
 
-        # Используем словарь для хранения цен
-        price_dict = {}
+        # # Используем словарь для хранения цен
+        # price_dict = {}
+        #
+        # for bike in prices:
+        #     model = bike[0]  # название модели
+        #     price_dict[model] = {
+        #         'day': bike[1],
+        #         'week': bike[2],
+        #         'month': bike[3]
+        #     }
 
-        for bike in prices:
-            model = bike[0]  # название модели
-            price_dict[model] = {
-                'day': bike[1],
-                'week': bike[2],
-                'month': bike[3]
-            }
-
-        return price_dict
+        return prices[-3], prices[-2], prices[-1]
 
 
 

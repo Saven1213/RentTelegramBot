@@ -1,6 +1,7 @@
 import aiosqlite
 
 from bot.db.crud.bike import change_status_not_free
+from bot.handlers.notifies import write_period
 
 DB_PATH = 'rent-bike.db'
 t = 'users'
@@ -55,6 +56,19 @@ async def get_all_users():
         users = await cursor.fetchall()
 
         return users
+
+async def get_all_admins():
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT *
+        FROM {t}
+        WHERE (admin = 'moderator' OR admin = 'admin')
+        """)
+
+        admins = await cursor.fetchall()
+
+        return admins
 
 
 

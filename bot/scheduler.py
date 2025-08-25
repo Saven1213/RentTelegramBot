@@ -5,6 +5,8 @@ import aiosqlite
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiosqlite import connect
 
+from bot.db.crud.payments.check_status import check_payments
+
 DB_PATH = "rent-bike.db"  # путь к базе
 
 
@@ -184,3 +186,7 @@ async def delete_old_history():
 
     except Exception as e:
         print(f"Ошибка при удалении истории: {e}")
+
+async def check_payments_job():
+    from bot.main import bot
+    await check_payments(bot)

@@ -1,10 +1,11 @@
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from typing import Callable, Dict, Any, Awaitable
-from bot.db.crud.user import get_user  # импортируйте вашу функцию get_user
+from bot.db.crud.user import get_user
 
 
 class BanMiddleware(BaseMiddleware):
+    from bot.db.crud.user import get_user
     async def __call__(
             self,
             handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
@@ -14,7 +15,7 @@ class BanMiddleware(BaseMiddleware):
 
         user = await get_user(event.from_user.id)
 
-        # Вариант 1: Проверяем на 1 (число)
+
         if user and user[-2] == 1:
             if isinstance(event, Message):
                 await event.answer(

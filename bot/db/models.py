@@ -78,7 +78,7 @@ class Payment(Base):
     commission: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Статусы
-    is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
+
     status: Mapped[str] = mapped_column(String(20), default="pending")
 
 
@@ -87,6 +87,7 @@ class Payment(Base):
 
 
     description: Mapped[Optional[str]] = mapped_column(String(300))
+    message_id: Mapped[int] = mapped_column(Integer)
 
 
 class RentDetail(Base):
@@ -95,10 +96,29 @@ class RentDetail(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
     bike_id: Mapped[int] = mapped_column(ForeignKey('bikes.id'))
-    nitified: Mapped[int] = mapped_column(Integer, default=0)
+    notified: Mapped[int] = mapped_column(Integer, default=0)
     start_time: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     end_time: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(default='active')  # 'active'/'completed'/'cancelled'
+    days: Mapped[int] = mapped_column(Integer)
+
+class Dept(Base):
+    __tablename__ = 'debts'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tg_id: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(String)
+
+class Equip(Base):
+    __tablename__ = 'equips'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tg_id: Mapped[int] = mapped_column(Integer)
+    helmet: Mapped[bool] = mapped_column(Boolean, default=False)
+    chain: Mapped[bool] = mapped_column(Boolean, default=False)
+    box: Mapped[bool] = mapped_column(Boolean, default=False)
+    trunk: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 async def async_main():
