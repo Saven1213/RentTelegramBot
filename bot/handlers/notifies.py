@@ -189,8 +189,7 @@ async def payment(callback: CallbackQuery):
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text='💳 Оплатить', url=created_bill.link_page_url)],
-            [InlineKeyboardButton(text='🔄 Проверить оплату', callback_data=f'check_pay-{created_bill.id}')]
+            [InlineKeyboardButton(text='💳 Оплатить', url=created_bill.link_page_url)]
         ]
     )
     msg = await callback.message.answer(
