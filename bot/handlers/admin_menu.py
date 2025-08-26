@@ -1,7 +1,15 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from datetime import datetime
+from aiogram.filters.callback_data import CallbackData
 
+import json
+
+from bot.db.crud.bike import get_bike_by_id
+from bot.db.crud.equips import save_equips
+from bot.db.crud.mix_conn import rent_bike
+from bot.db.crud.payments.change_status import change_status_order
+from bot.db.crud.payments.get_order import get_order
 from bot.db.crud.rent_data import get_data_rents, get_current_rent
 from bot.db.crud.user import get_user, get_all_users
 
@@ -200,10 +208,6 @@ async def view_select_user_admin(callback: CallbackQuery):
             InlineKeyboardButton(text='↩️ Назад', callback_data='admin_main')
         ]
     ])
-
-
-
-
     await callback.message.edit_text(text=user_card, reply_markup=keyboard, parse_mode='HTML')
 
 
@@ -299,3 +303,227 @@ async def current_rent_user_admin(callback: CallbackQuery):
         parse_mode='HTML',
         reply_markup=keyboard
     )
+
+
+
+
+user_selections = {}
+
+# -------------------------------
+# CallbackData для toggle-кнопок
+class ItemToggleCallback(CallbackData, prefix="toggle"):
+    item: str
+    order_id: str
+    bike_id: str
+
+# -------------------------------
+# Генерация клавиатуры с красный/зелёный кружок
+def get_items_keyboard(user_id: int, order_id: str, bike_id: str):
+    items = ["шлем", "багажник", "цепь", "сумка"]  # новый предмет добавлен
+
+    # получаем текущие выборы или создаём новый словарь
+    selections = user_selections.get(user_id, {})
+
+    # добавляем новые предметы, которых ещё нет
+    for item in items:
+        if item not in selections:
+            selections[item] = False
+
+    # сохраняем обновлённый словарь обратно
+    user_selections[user_id] = selections
+
+    inline_keyboard = []
+
+    for item in items:
+        state = "🟢" if selections[item] else "🔴"
+        button = InlineKeyboardButton(
+            text=f"{item} {state}",
+            callback_data=ItemToggleCallback(item=item, order_id=order_id, bike_id=bike_id).pack()
+        )
+        inline_keyboard.append([button])
+
+    # формируем строку выбранных предметов
+    selected_items = [item for item, state in selections.items() if state]
+    code_map = {"шлем": "h", "багажник": "b", "цепь": "c", "сумка": "s"}
+    selected_items_str = "".join(code_map[item] for item in selected_items)
+    callback_data = f"confirm_equipment-{order_id}-{bike_id}-{selected_items_str}"
+
+    confirm_button = InlineKeyboardButton(
+        text="✅ Подтвердить экипировку",
+        callback_data=callback_data
+    )
+    inline_keyboard.append([confirm_button])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+    return keyboard
+
+
+@router.callback_query(F.data.split('-')[0] == 'confirm_rent_admin')
+async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
+    user_id = callback.from_user.id
+    parts = callback.data.split('-')
+    order_id = parts[1]
+    bike_id = parts[2]
+
+    # создаём словарь для хранения выбора экипировки
+    user_selections[user_id] = {"шлем": False, "багажник": False, "цепь": False, "сумка": False}
+
+    # показываем toggle-клавиатуру экипировки
+    await callback.message.edit_text(
+        f"Выберите экипировку:",
+        reply_markup=get_items_keyboard(user_id, order_id, bike_id)
+    )
+
+# -------------------------------
+# Хэндлер toggle-кнопок
+@router.callback_query(ItemToggleCallback.filter())
+async def toggle_item_callback(query: CallbackQuery, callback_data: ItemToggleCallback):
+    user_id = query.from_user.id
+    if user_id not in user_selections:
+        user_selections[user_id] = {"шлем": False, "багажник": False, "цепь": False}
+
+    # переключаем состояние
+    user_selections[user_id][callback_data.item] = not user_selections[user_id][callback_data.item]
+
+    # обновляем клавиатуру
+    await query.message.edit_reply_markup(
+        reply_markup=get_items_keyboard(user_id, callback_data.order_id, callback_data.bike_id)
+    )
+    await query.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'confirm_equipment')
+async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
+    user_id = callback.from_user.id
+    parts = callback.data.split('-')
+    order_id = parts[1]
+    bike_id = parts[2]
+
+    order = await get_order(order_id)
+
+    # получаем выбранные коды предметов, например "hbc"
+    selected_codes = parts[3] if len(parts) > 3 else ""
+
+    # карта кодов → предметы
+    code_to_item = {"h": "шлем", "b": "багажник", "c": "цепь", "s": "сумка"}
+    selected_items = [code_to_item[c] for c in selected_codes if c in code_to_item]
+
+    # переводим выбор в булевы значения для БД
+    helmet = 'шлем' in selected_items
+    chain = 'цепь' in selected_items
+    box = 'сумка' in selected_items
+    trunk = 'багажник' in selected_items
+
+    # сохраняем экипировку
+    await save_equips(order[1], helmet, chain, box, trunk)
+
+    await change_status_order(order_id, 'success')
+
+    order = await get_order(order_id)
+    order_msgs_json = order[-1]
+    order_msgs = json.loads(order_msgs_json)
+
+    # удаляем сообщения админов
+    for admin_tg_id, msg_id in order_msgs.items():
+        try:
+            await bot.delete_message(chat_id=admin_tg_id, message_id=int(msg_id))
+        except Exception:
+            pass
+
+    admin_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
+    )
+    user_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main"),
+                          InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]]
+    )
+
+    # уведомление админа
+    await callback.message.edit_text(
+        text=(
+            "✅ <b>Аренда подтверждена!</b>\n\n"
+            "Вы успешно подтвердили заявку пользователя на аренду скутера.\n"
+            f"Выбранная экипировка: {', '.join(selected_items) if selected_items else 'не выбрано'}"
+        ),
+        parse_mode="HTML",
+        reply_markup=admin_keyboard
+    )
+
+    # уведомление пользователя
+    await bot.send_message(
+        chat_id=order[1],
+        text=(
+            "🎉 <b>Аренда подтверждена!</b>\n\n"
+            "Ваш скутер готов к поездке. 🚴\n"
+            "Наслаждайтесь свободой и скоростью на дорогах!\n\n"
+            "Желаем отличного настроения и безопасной поездки! 🌟"
+        ),
+        parse_mode="HTML",
+        reply_markup=user_keyboard
+    )
+
+    await rent_bike(order[1], bike_id, order[-2])
+
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
+async def cancel_but_rent(callback: CallbackQuery, bot: Bot):
+    order_id = callback.data.split('-')[1]
+
+
+
+
+
+    order = await get_order(order_id)
+    order_msgs_json = order[-1]
+    order_msgs = json.loads(order_msgs_json)
+
+    for admin_tg_id, msg_id in order_msgs.items():
+        try:
+            await bot.delete_message(chat_id=admin_tg_id, message_id=int(msg_id))
+        except Exception as e:
+
+            pass
+
+    await change_status_order(order_id, 'fail')
+
+
+    admin_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
+            ]
+        ]
+    )
+
+    user_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="main"),
+                InlineKeyboardButton(text="👤 Профиль", callback_data="profile")
+            ]
+        ]
+    )
+
+    await bot.send_message(
+        chat_id=order[1],
+        text=(
+            "❌ <b>Аренда отклонена</b>\n\n"
+            "К сожалению, ваша заявка на аренду скутера была отклонена администратором.\n"
+            "Вы можете попробовать оформить аренду позже или выбрать другой транспорт.\n\n"
+            "Не расстраивайтесь — всегда найдётся способ прокатиться! 🚴‍♂️"
+        ),
+        parse_mode="HTML",
+        reply_markup=user_keyboard
+    )
+
+    await callback.message.edit_text(
+        text=(
+            "❌ <b>Аренда отклонена</b>\n\n"
+            "Вы отклонили заявку пользователя на аренду скутера.\n"
+            "Сообщение о решении было отправлено пользователю."
+        ),
+        parse_mode="HTML",
+        reply_markup=admin_keyboard
+    )
+
+
+

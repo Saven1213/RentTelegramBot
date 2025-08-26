@@ -41,8 +41,8 @@ async def rent_bike(tg_id, bike_id, time):
         start_time = datetime.utcnow()
         end_time = start_time + timedelta(days=time)
         await cursor.execute(
-            "INSERT INTO rent_details (user_id, bike_id, start_time, end_time, status) VALUES (?, ?, ?, ?, ?)",
-            (tg_id, bike_id, start_time.isoformat(), end_time.isoformat(), "active")
+            "INSERT INTO rent_details (user_id, bike_id, start_time, end_time, status, notified) VALUES (?, ?, ?, ?, ?, ?)",
+            (tg_id, bike_id, start_time.isoformat(), end_time.isoformat(), "active", False)
         )
 
         await conn.commit()

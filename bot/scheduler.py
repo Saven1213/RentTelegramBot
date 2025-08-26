@@ -65,11 +65,11 @@ async def check_rent_status(bot: Bot):
                         )
                         await conn.commit()
 
-                    print(f"Уведомление отправлено пользователю {user_id}")
+                    # print(f"Уведомление отправлено пользователю {user_id}")
 
     except Exception as e:
-        print(f"Ошибка в check_rent_status: {e}")
-
+        # print(f"Ошибка в check_rent_status: {e}")
+        pass
 
 async def deactivate_expired_rents(bot: Bot):
     try:

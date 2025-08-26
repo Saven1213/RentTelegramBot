@@ -174,6 +174,13 @@ async def payment(callback: CallbackQuery):
     else:
         price = month
 
+    if int(data) == 1:
+        text_time = "1 день"
+    elif int(data) < 5:
+        text_time = f"{data} дня"
+    else:
+        text_time = f"{data} дней"
+
     bike_id = user[3]
     order_id = f'order-{uuid.uuid4().hex[:8]}-{bike_id}-{tg_id}'
 
@@ -199,5 +206,5 @@ async def payment(callback: CallbackQuery):
         reply_markup=keyboard
     )
 
-    await create_payment(tg_id, order_id, created_bill.id, price, data, msg.message_id)
+    await create_payment(tg_id, order_id, created_bill.id, price, data, msg.message_id, f'Продление аренды на {text_time}!')
 

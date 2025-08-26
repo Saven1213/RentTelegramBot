@@ -87,7 +87,7 @@ class Payment(Base):
 
 
     description: Mapped[Optional[str]] = mapped_column(String(300))
-    message_id: Mapped[int] = mapped_column(Integer)
+    message_id: Mapped[str] = mapped_column(String)
 
 
 class RentDetail(Base):

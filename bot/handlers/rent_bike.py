@@ -1,11 +1,23 @@
-from aiogram import Router, F
+import uuid
+
+import json
+
+
+from aiogram import Router, F, Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
 from bot.db.crud.bike import get_bike_by_type, get_bike_by_id, get_price
 from bot.db.crud.mix_conn import rent_bike
-from bot.db.crud.user import get_user
+from bot.db.crud.payments.add_fail_status import fail_status
+from bot.db.crud.payments.create_payment import create_payment
+from bot.db.crud.user import get_user, get_all_admins
+
+from bot.config import cl
+from cardlink._types import Bill
+
+
 
 router = Router()
 
@@ -180,137 +192,7 @@ async def bike_number(callback: CallbackQuery):
         reply_markup=keyboard
     )
 
-# @router.callback_query(F.data == 'test_payment')
-# async def test_payment(callback: CallbackQuery, bot: Bot):
-#     tg_id = callback.from_user.id
-#
-#     user = await get_user(tg_id)
-#
-#     print(user, ' протестил функцию оплаты (1)')
-#
-#     payment_check = """
-#     <code>┌──────────────────────────────┐</code>
-#     <b>  � ЧЕК ОПЛАТЫ #A23245674</b>
-#     <code>├──────────────────────────────┤</code>
-#     <b>│ Модель:</b> Jog
-#     <b>│ Тариф:</b> Месяц
-#     <b>│ Начало:</b> 10.07.2025
-#     <b>│ Окончание:</b> 10.08.2025
-#     <code>├──────────────────────────────┤</code>
-#     <b>│ Итого к оплате:</b> <u>12000₽</u>
-#     <code>└──────────────────────────────┘</code>
-#
-#     ⚠️ <i>Ваша аренда завершается через 2 дня!</i>
-#     """
-#
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [
-#             InlineKeyboardButton(text="🔄 Продлить аренду", callback_data=f"extend"),
-#             InlineKeyboardButton(text="⏳ Оплачу позже", callback_data="pay_later")
-#         ],
-#         [
-#             InlineKeyboardButton(text="❌ Не продлевать", callback_data=f"cancel")
-#         ],
-#         [
-#             InlineKeyboardButton(text="📞 Поддержка", url="t.me/hulkbike_support")
-#         ]
-#     ])
-#
-#     await bot.send_message(
-#         chat_id=callback.from_user.id,
-#         text=payment_check,
-#         parse_mode='HTML',
-#         reply_markup=keyboard
-#     )
 
-# @router.callback_query(F.data == 'extend')
-# async def extend_bike(callback: CallbackQuery):
-#     tg_id = callback.from_user.id
-#
-#     user = await get_user(tg_id)
-#
-#     print(user, ' продлил оплату ')
-#
-#
-#     payment_success = f"""
-#     <code>┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓</code>
-#     <b>  💳 ОПЛАТА ПРОИЗВЕДЕНА  </b>
-#     <code>┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
-#     <b>│</b> 🔹 Номер заказа: <code>#A23245674</code>
-#     <b>│</b> 🔹 Сумма: <b>12000₽</b>
-#     <b>│</b> 🔹 Способ: <i>СБП</i>
-#     <code>┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
-#     <b>│</b> 🏍 Модель: <b>JOG</b>
-#     <b>│</b> ⏳ Срок аренды: <b>месяц</b>
-#     <b>│</b> 📍 Локация: <i>Краснодар</i>
-#     <code>┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛</code>
-#
-#     <b>✅ Ваш скутер готов к использованию!</b>
-#     <i>Приятной поездки и соблюдайте ПДД!</i> 🚦
-#     """
-#
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [
-#             InlineKeyboardButton(text="🛵 Мой скутер", callback_data="my_bike"),
-#             InlineKeyboardButton(text="📊 Профиль", callback_data="profile")
-#         ],
-#         [
-#             InlineKeyboardButton(text="ℹ️ Помощь", callback_data="help"),
-#             InlineKeyboardButton(text="📝 Чек", callback_data=f"receipt")
-#         ],
-#         [
-#             InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")
-#         ]
-#     ])
-#     await callback.message.edit_text(
-#         text=payment_success,
-#         parse_mode='HTML',
-#         reply_markup=keyboard
-#     )
-#
-# @router.callback_query(F.data == 'pay_later')
-# async def pay_later(callback: CallbackQuery):
-#     await callback.message.delete()
-#
-#     tg_id = callback.from_user.id
-#
-#     user = await get_user(tg_id)
-#
-#     print(user, ' нажал напомнить позже про оплату ')
-#
-# @router.callback_query(F.data == 'cancel')
-# async def cancel_rent_handler(callback: CallbackQuery):
-#     tg_id = callback.from_user.id
-#
-#     user = await get_user(tg_id)
-#
-#     print(user, ' отменил оплату')
-#
-#     cancel_message = f"""
-# <code>┌──────────────────────────────┐</code>
-# <b>  🚫 АРЕНДА ОТМЕНЕНА  </b>
-# <code>├──────────────────────────────┤</code>
-# <b>│</b> 🔹 Скутер: <b>JOG</b>
-# <b>│</b> 🔹 Номер: <code>#27</code>
-# <code>├──────────────────────────────┤</code>
-# <b>│</b> ⏳ Время отмены: <i>{datetime.now().strftime('%d.%m %H:%M')}</i>
-# <b>│</b> ⏳ Конец аренды: <i>10.08.2025</i>
-# <code>└──────────────────────────────┛</code>
-#
-# <i>Скутер доступен для новой аренды.</i>
-# Спасибо, что пользовались Hulk Bike! 🛵💚
-# """
-#
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text="📝 Оставить отзыв", callback_data="leave_feedback")],
-#         [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
-#     ])
-#
-#     await callback.message.edit_text(
-#         text=cancel_message,
-#         parse_mode="HTML",
-#         reply_markup=keyboard
-#     )
 
 @router.callback_query(F.data.split('-')[0] == 'period')
 async def period(callback: CallbackQuery, state: FSMContext):
@@ -380,7 +262,7 @@ async def state_period_handler(message: Message, state: FSMContext):
         days = int(msg)
         if days >= 3:
 
-            callback_data = f"rent_scooter_but-{rent_data}-{days}"
+            callback_data = f"rent_scooter_but-{rent_data}-{days}-none"
 
 
             await message.answer(
@@ -417,46 +299,49 @@ async def state_period_handler(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.split('-')[0] == 'rent_scooter_but')
 async def but_rent(callback: CallbackQuery):
+
+
     tg_id = callback.from_user.id
     bike_id = int(callback.data.split('-')[1])
     time_ = int(callback.data.split('-')[2])
+    none_or_data = callback.data.split('-')[-1]
+    if none_or_data == 'none':
+        pass
+    else:
+        await fail_status(order_id=none_or_data)
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]
     ])
 
-    user_data, bike_data, rented_now = await rent_bike(tg_id, bike_id, time_)
+    # user_data, bike_data, rented_now = await rent_bike(tg_id, bike_id, time_)
+
 
     # Получаем актуальные цены
-    prices = await get_price()
+    prices = await get_price(bike_id)
     bike_model = await get_bike_by_id(bike_id)
+    user = await get_user(tg_id)
 
-    # Форматирование времени
-    if time_ == 1:
-        text_time = "1 день"
-    elif time_ < 5:
-        text_time = f"{time_} дня"
-    else:
-        text_time = f"{time_} дней"
+    # # Форматирование времени
+    # if time_ == 1:
+    #     text_time = "1 день"
+    # elif time_ < 5:
+    #     text_time = f"{time_} дня"
+    # else:
+    #     text_time = f"{time_} дней"
 
-    # Расчет цены
+
     if time_ == 1:
-        price = prices[bike_model]['day']
+        price = prices[-3]
     elif time_ < 7:
-        price = prices[bike_model]['day'] * time_
+        price = prices[-3] * time_
     elif time_ < 30:
-        weeks = time_ // 7
-        remaining_days = time_ % 7
-        price = (prices[bike_model]['week'] * weeks +
-                prices[bike_model]['day'] * remaining_days)
+        price = prices[-2] * time_
     else:
-        months = time_ // 30
-        remaining_days = time_ % 30
-        price = (prices[bike_model]['month'] * months +
-                prices[bike_model]['day'] * remaining_days)
+        price = prices[-1] * time_
 
-    if rented_now:
+    if user[3] == 'null' or user[3] is None:
 
     # created_invoice: CreatedInvoice = await cl.create_invoice(
     #     amount=price,
@@ -465,14 +350,14 @@ async def but_rent(callback: CallbackQuery):
     # )
 
         keyboard_invoice = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='💳 Оплатить', callback_data='payment_rent')],
+            [InlineKeyboardButton(text='💳 Оплатить', callback_data=f'payment_rent-{bike_id}-{price}-{time_}'), InlineKeyboardButton(text='💸 Оплатить в руки', callback_data=f'payment_to_hands-{bike_id}-{price}-{time_}')],
             [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]
         ])
 
         await callback.message.edit_text(
             f"🎉 Отличный выбор!\n\n"
-            f"🚴 Скутер <b>{bike_model}</b>\n"
+            f"🚴 Скутер <b>{bike_model[2]} #{bike_model[1]}</b>\n"
             f"💵 Сумма к оплате: <b>{price} руб</b>\n\n"
             f"Для подтверждения аренды нажмите кнопку оплаты ниже 👇",
             reply_markup=keyboard_invoice,
@@ -484,5 +369,120 @@ async def but_rent(callback: CallbackQuery):
             "Сначала завершите текущую аренду, а потом сможете взять новый 🚴",
             reply_markup=keyboard
         )
+
+@router.callback_query(F.data.split('-')[0] == 'payment_rent')
+async def payment_rent_scoot(callback: CallbackQuery):
+
+    tg_id = callback.from_user.id
+
+    days = callback.data.split('-')[-1]
+
+    price = callback.data.split('-')[2]
+    bike_id = callback.data.split('-')[1]
+    order_id = f'order_{uuid.uuid4().hex[:8]}_{bike_id}_{tg_id}'
+
+    created_bill: Bill = await cl.create_bill(amount=int(price), order_id=order_id, currency_in='RUB')
+    if int(days) == 1:
+        text_time = "1 день"
+    elif int(days) < 5:
+        text_time = f"{days} дня"
+    else:
+        text_time = f"{days} дней"
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='💳 Оплатить', url=created_bill.link_page_url)
+            ],
+            [
+                InlineKeyboardButton(text='Назад', callback_data=f'rent_scooter_but-{bike_id}-{days}-{order_id}')
+            ]
+        ]
+    )
+
+    msg = await callback.message.edit_text(f'Оплатите {price}', reply_markup=keyboard)
+
+    await create_payment(tg_id, order_id, created_bill.id, price, days, msg.message_id, f'Аренда скутера на {text_time}')
+
+
+@router.callback_query(F.data.split('-')[0] == 'payment_to_hands')
+async def to_hands(callback: CallbackQuery, bot: Bot):
+    bike_id = callback.data.split('-')[1]
+    price = callback.data.split('-')[2]
+    tg_id = callback.from_user.id
+    admins = await get_all_admins()
+    bike = await get_bike_by_id(bike_id)
+    bike_type = bike[2]
+    user = await get_user(tg_id)
+    order_id = f'order_{uuid.uuid4().hex[:8]}_{bike_id}_{tg_id}'
+    days = callback.data.split('-')[-1]
+
+
+    if int(days) == 1:
+        text_time = "1 день"
+    elif int(days) < 5:
+        text_time = f"{days} дня"
+    else:
+        text_time = f"{days} дней"
+
+    text = (
+        f"📢 <b>Новая заявка на аренду</b>\n\n"
+        f"👤 Пользователь: <code>{user[2]}</code>\n"
+        f"🛵 Скутер: <b>{bike_type}</b> (ID: <code>{bike[1]}</code>)\n"
+        f"💵 Сумма аренды: <b>{price} ₽</b>\n\n"
+        "✅ Подтвердите или отмените аренду ниже"
+    )
+
+    keyboard_admin = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='Подтвердить', callback_data=f'confirm_rent_admin-{order_id}-{bike_id}'),
+                InlineKeyboardButton(text='Отменить', callback_data=f'cancel_rent_admin-{order_id}')
+            ]
+        ]
+    )
+
+
+
+    admin_messages = {}
+
+    for admin in admins:
+        msg = await bot.send_message(
+            admin[1],
+            text=text,
+            parse_mode='HTML',
+            reply_markup=keyboard_admin
+        )
+        admin_messages[admin[1]] = msg.message_id
+
+    admin_messages_json = json.dumps(admin_messages)
+
+
+    await create_payment(tg_id=tg_id, order_id=order_id, id_='hands', price=price, time=days, message_id=admin_messages_json, description=f'Аренда скутера на {text_time}')
+
+    user_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")
+            ]
+        ]
+    )
+
+    # Отправка сообщения пользователю
+    await callback.message.edit_text(
+        text=(
+            "✅ Ваша заявка на аренду отправлена администратору!\n"
+            "Ожидайте подтверждения."
+        ),
+        parse_mode="HTML",
+        reply_markup=user_keyboard
+    )
+
+
+
+
+
+
+
+
 
 

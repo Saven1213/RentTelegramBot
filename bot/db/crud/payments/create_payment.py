@@ -4,7 +4,7 @@ from datetime import datetime
 DB_PATH = 'rent-bike.db'
 
 
-async def create_payment(tg_id, order_id, id_, price, time, message_id):
+async def create_payment(tg_id, order_id, id_, price, time, message_id, description):
     async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute('''
@@ -19,7 +19,7 @@ async def create_payment(tg_id, order_id, id_, price, time, message_id):
             'RUB',
             'pending',
             datetime.now(),
-            f"Продление аренды на {time} дней",
+            description,
             time,
             message_id
         ))
