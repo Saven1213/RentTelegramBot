@@ -117,6 +117,7 @@ class Equip(Base):
     chain: Mapped[bool] = mapped_column(Boolean, default=False)
     box: Mapped[bool] = mapped_column(Boolean, default=False)
     trunk: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String)
 
 class Pledge(Base):
     __tablename__ = 'pledges'

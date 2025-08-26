@@ -1,5 +1,7 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+
 from aiogram.types import Message, CallbackQuery
 
 from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
@@ -17,7 +19,9 @@ import uuid
 
 
 @router.message(CommandStart())
-async def start_command(message: Message):
+async def start_command(message: Message, state: FSMContext):
+    await state.clear()
+
     tg_id = message.from_user.id
     username = message.from_user.username
     user = await get_user(tg_id)
@@ -171,9 +175,6 @@ async def main(callback: CallbackQuery):
     else:
         if user[-1] == 'admin' or user[-1] == 'moderator':
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')
-                ],
                 [
                     InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                 ],

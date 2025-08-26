@@ -69,4 +69,17 @@ async def rent_bike(tg_id: int, bike_id: int, days: int, pledge: float | int = 0
         return user, bike, True
 
 
+async def get_user_and_data(tg_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
+        user = await cursor.fetchone()
+
+        await cursor.execute("SELECT * FROM names WHERE tg_id = ?", (tg_id,))
+        personal_data = await cursor.fetchone()
+
+        return user, personal_data
+
+
+
 
