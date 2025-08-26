@@ -441,12 +441,14 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         pass
 
     # потом удаляем остальные сообщения админов
-    for admin_tg_id, msg_id in order_msgs.items():
-        if int(admin_tg_id) != user_id:  # не удаляем сообщение того админа, кто подтвердил
+    for role_name, role_dict in order_msgs.items():  # role_name = 'admin' или 'user'
+        for chat_id, msg_id in role_dict.items():
+            if role_name == 'admin' and int(chat_id) == user_id:
+                continue
             try:
-                await bot.delete_message(chat_id=admin_tg_id, message_id=int(msg_id))
-            except Exception:
-                pass
+                await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
+            except Exception as e:
+                print(f"Ошибка удаления {chat_id=} {msg_id=}: {e}")
 
     # уведомление пользователя
     await bot.send_message(

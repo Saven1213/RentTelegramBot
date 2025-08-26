@@ -383,7 +383,10 @@ async def payment_rent_scoot(callback: CallbackQuery):
 
     pledge = 2000
 
-    created_bill: Bill = await cl.create_bill(amount=int(price) + pledge, order_id=order_id, currency_in='RUB')
+
+
+
+    created_bill: Bill = await cl.create_bill(amount=10, order_id=order_id, currency_in='RUB')
     if int(days) == 1:
         text_time = "1 день"
     elif int(days) < 5:
@@ -401,7 +404,13 @@ async def payment_rent_scoot(callback: CallbackQuery):
         ]
     )
 
-    msg = await callback.message.edit_text(f'Оплатите {price} + залог {pledge}, итого', reply_markup=keyboard)
+    msg = await callback.message.edit_text(text=(
+        f"💳 <b>ОПЛАТА АРЕНДЫ</b>\n\n"
+        f"📦 Стоимость аренды: <b>{int(price)} ₽</b>\n"
+        f"🛡️ Залог: {pledge}<b> ₽</b>\n"
+        f"──────────────────\n"
+        f"💰 <b>ИТОГО: {int(price) + pledge} ₽</b>\n\n"
+    ), reply_markup=keyboard, parse_mode='HTML')
 
     await create_payment(tg_id, order_id, created_bill.id, price, days, msg.message_id, f'Аренда скутера на {text_time}', pledge=pledge)
 
@@ -459,7 +468,7 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
         ]
     )
 
-    # Отправка сообщения пользователю
+
     msg_user = await callback.message.edit_text(
         text=(
             "✅ Ваша заявка на аренду отправлена администратору!\n"
@@ -469,7 +478,7 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
         reply_markup=user_keyboard
     )
 
-    messages = {}
+    messages = {'user': {}, 'admin': {}}
 
     for admin in admins:
         msg = await bot.send_message(
@@ -478,8 +487,8 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
             parse_mode='HTML',
             reply_markup=keyboard_admin
         )
-        messages[admin[1]] = msg.message_id
-    messages[tg_id] = msg_user.message_id
+        messages['admin'][admin[1]] = msg.message_id
+    messages['user'][tg_id] = msg_user.message_id
     messages_json = json.dumps(messages)
 
 

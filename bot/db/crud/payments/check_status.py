@@ -42,6 +42,15 @@ async def check_payments(bot: Bot) -> None:
             payment_id, bill_id, user_id, amount, currency, days, created_at, message_id = payment
 
 
+            await cursor.execute("""
+            SELECT username
+            FROM users
+            WHERE tg_id = ?
+            """, (user_id, ))
+
+            user = await cursor.fetchone()
+
+
             if isinstance(created_at, str):
                 try:
                     created_dt = datetime.fromisoformat(created_at)
@@ -53,6 +62,23 @@ async def check_payments(bot: Bot) -> None:
 
             time_diff = (datetime.now() - created_dt).total_seconds() / 60
 
+            user_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")
+                    ],
+                    [
+                        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
+                    ]
+                ]
+            )
+            admin_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")
+                    ]
+                ]
+            )
 
             if time_diff > 1:
                 await cursor.execute(f'''
@@ -62,9 +88,6 @@ async def check_payments(bot: Bot) -> None:
                     WHERE id = ?
                 ''', (datetime.now().isoformat(), payment_id))
 
-
-
-
                 if message_id:
                     try:
                         parsed = json.loads(message_id)
@@ -72,52 +95,52 @@ async def check_payments(bot: Bot) -> None:
                         parsed = message_id
 
                     if isinstance(parsed, dict):
-                        for chat_id, msg_id in parsed.items():
-                            try:
-                                await bot.edit_message_text(
-                                    chat_id=int(chat_id),
-                                    message_id=int(msg_id),
-                                    text=(
-                                        "❌ <b>СЧЁТ ПРОСРОЧЕН</b>\n\n"
-                                        "⏰ Пользователь не оплатил в течение 15 минут."
-                                    ),
-                                    parse_mode="HTML"
-                                )
-                            except Exception as e:
-                                print(f"Ошибка редактирования {chat_id=} {msg_id=}: {e}")
+                        for role_name, role_dict in parsed.items():
+                            for chat_id, msg_id in role_dict.items():
+                                try:
+
+                                    await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
+
+
+                                    if role_name == 'admin':
+                                        await bot.send_message(
+                                            chat_id=int(chat_id),
+                                            text=(
+                                                "❌ <b>СЧЁТ ПРОСРОЧЕН</b>\n\n"
+                                                f"⏰ Пользователь @{user[0]} не оплатил в течение 15 минут."
+                                            ),
+                                            reply_markup=admin_keyboard,
+                                            parse_mode="HTML"
+                                        )
+                                    else:
+                                        await bot.send_message(
+                                            chat_id=int(chat_id),
+                                            text=(
+                                                "❌ <b>ВРЕМЯ ОПЛАТЫ ИСТЕКЛО</b>\n\n"
+                                                "⏰ Вы не успели оплатить в течение 15 минут.\n\n"
+                                                "💡 Вы можете оплатить заново в личном кабинете"
+                                            ),
+                                            parse_mode="HTML",
+                                            reply_markup=user_keyboard
+                                        )
+                                except Exception as e:
+                                    print(f"Ошибка обработки {chat_id=} {msg_id=}: {e}")
                     else:
                         try:
-                            await bot.edit_message_text(
+                            await bot.delete_message(chat_id=int(user_id), message_id=int(parsed))
+                            await bot.send_message(
                                 chat_id=int(user_id),
-                                message_id=int(parsed),
                                 text=(
-                                    "❌ <b>СЧЁТ ПРОСРОЧЕН</b>\n\n"
-                                    "⏰ Пользователь не оплатил в течение 15 минут."
+                                    "❌ <b>ВРЕМЯ ОПЛАТЫ ИСТЕКЛО</b>\n\n"
+                                    "⏰ Вы не успели оплатить в течение 15 минут.\n\n"
+                                    "💡 Вы можете оплатить заново в личном кабинете"
                                 ),
-                                parse_mode="HTML"
+                                parse_mode="HTML", reply_markup=user_keyboard
                             )
                         except Exception as e:
-                            print(f"Ошибка редактирования {user_id=} {parsed=}: {e}")
+                            print(f"Ошибка обработки {user_id=} {parsed=}: {e}")
 
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="🏠 В главное меню", callback_data="main_menu")
-                        ],
-                        [
-                            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-                        ]
-                    ]
-                )
-                await bot.send_message(
-                    user_id,
-                    "❌ <b>ВРЕМЯ ОПЛАТЫ ИСТЕКЛО</b>\n\n"
-                    "⏰ Вы не успели оплатить в течение 15 минут.\n\n"
-                    "💡 Вы можете оплатить заново в личном кабинете",
-                    parse_mode='HTML',
-                    reply_markup=keyboard
-                )
-                continue
+                    continue
 
 
             try:
@@ -141,22 +164,13 @@ async def check_payments(bot: Bot) -> None:
                     WHERE id = ?
                 ''', (datetime.now().isoformat(), getattr(bill, 'commission', 0), payment_id))
 
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="🏠 В главное меню", callback_data="main_menu")
-                        ],
-                        [
-                            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-                        ]
-                    ]
-                )
+
                 await bot.send_message(
                     user_id,
                     f"🎉 <b>ОПЛАТА ПРОШЛА УСПЕШНО!</b>\n\n"
                     f"✅ Вы можете пользоваться арендой ещё <b>{days} дней</b>.",
                     parse_mode='HTML',
-                    reply_markup=keyboard
+                    reply_markup=user_keyboard
                 )
 
                 await add_rent_data(user[1], user[3], days=days)
@@ -169,16 +183,7 @@ async def check_payments(bot: Bot) -> None:
                     WHERE id = ?
                 ''', (datetime.now().isoformat(), payment_id))
 
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="🏠 В главное меню", callback_data="main_menu")
-                        ],
-                        [
-                            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-                        ]
-                    ]
-                )
+
 
                 await bot.send_message(
                     user_id,
@@ -190,7 +195,7 @@ async def check_payments(bot: Bot) -> None:
                         "• Используйте другой способ или карту\n\n"
                         "🔑 Перейдите в <b>Личный кабинет</b>, чтобы повторить оплату."
                     ),
-                    parse_mode="HTML", reply_markup=keyboard
+                    parse_mode="HTML", reply_markup=user_keyboard
                 ),
 
 
@@ -209,7 +214,8 @@ async def check_payments(bot: Bot) -> None:
                             f"💰 Сумма: <b>{amount} ₽</b>\n\n"
                             "💡 Пользователь может попробовать снова или выбрать другой способ оплаты."
                         ),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
+                        reply_markup=admin_keyboard
                     )
 
             else:

@@ -1,6 +1,8 @@
 from aiogram import Bot
 
-from datetime import datetime, timedelta
+
+
+from datetime import datetime, timedelta, time
 import aiosqlite
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiosqlite import connect
@@ -35,35 +37,38 @@ async def check_rent_status(bot: Bot):
         now_msk = now_utc + timedelta(hours=3)
 
         for user_id, end_time_str, notified in rows:
-            if end_time_str:
+            if end_time_str and notified == 0:
                 end_time_utc = datetime.fromisoformat(end_time_str)
                 end_time_msk = end_time_utc + timedelta(hours=3)
 
-                time_left = end_time_msk - now_msk
+                notification_hour = 10
 
-                # Проверяем, что до конца аренды осталось от 23 до 24 часов
-                # И что уведомление еще не отправлялось
-                if timedelta(hours=23) <= time_left <= timedelta(hours=24) and notified == 0:
-                    hours_left = int(time_left.total_seconds() // 3600)
-                    minutes_left = int((time_left.total_seconds() % 3600) // 60)
+                if now_msk.date() == end_time_msk.date():
+                    # если текущее время >= 10:00 и < 11:00
+                    if time(notification_hour, 0) <= now_msk.time() < time(notification_hour + 1, 0):
+                        # считаем оставшееся время
+                        time_left = end_time_msk - now_msk
+                        hours_left = int(time_left.total_seconds() // 3600)
+                        minutes_left = int((time_left.total_seconds() % 3600) // 60)
 
-                    await bot.send_message(
-                        user_id,
-                        f"⏰ <b>АРЕНДА ЗАКАНЧИВАЕТСЯ ЧЕРЕЗ ДЕНЬ!</b>\n\n"
-                        f"📅 <b>Окончание:</b> {end_time_msk.strftime('%d.%m.%Y %H:%M')} МСК\n"
-                        f"⏳ <b>Осталось:</b> {hours_left}ч {minutes_left}м\n\n"
-                        f"💡 <i>Хотите продлить аренду?</i>",
-                        parse_mode='HTML',
-                        reply_markup=keyboard
-                    )
-
-                    # Помечаем, что уведомление отправлено
-                    async with aiosqlite.connect(DB_PATH) as conn:
-                        await conn.execute(
-                            "UPDATE rent_details SET notified = 1 WHERE user_id = ? AND end_time = ?",
-                            (user_id, end_time_str)
+                        # отправляем сообщение пользователю
+                        await bot.send_message(
+                            user_id,
+                            f"⏰ <b>АРЕНДА ЗАКАНЧИВАЕТСЯ СЕГОДНЯ!</b>\n\n"
+                            f"📅 <b>Окончание:</b> {end_time_msk.strftime('%d.%m.%Y %H:%M')} МСК\n"
+                            f"⏳ <b>Осталось:</b> {hours_left}ч {minutes_left}м\n\n"
+                            f"💡 <i>Хотите продлить аренду?</i>",
+                            parse_mode='HTML',
+                            reply_markup=keyboard
                         )
-                        await conn.commit()
+
+                        # помечаем, что уведомление отправлено
+                        async with aiosqlite.connect(DB_PATH) as conn:
+                            await conn.execute(
+                                "UPDATE rent_details SET notified = 1 WHERE user_id = ? AND end_time = ?",
+                                (user_id, end_time_str)
+                            )
+                            await conn.commit()
 
                     # print(f"Уведомление отправлено пользователю {user_id}")
 

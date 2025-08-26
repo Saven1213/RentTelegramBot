@@ -34,8 +34,8 @@ async def main():
 
 
 
-    scheduler.add_job(check_rent_status, "interval", hours=1, args=[bot])
-    scheduler.add_job(deactivate_expired_rents, "interval",  minutes=30, args=[bot])
+    scheduler.add_job(check_rent_status, "interval", minutes=1, args=[bot])
+    scheduler.add_job(deactivate_expired_rents, "interval",  minutes=5, args=[bot])
     scheduler.add_job(delete_old_history, 'interval', days=30)
     scheduler.add_job(check_payments_job, 'interval', seconds=30)
     scheduler.start()
