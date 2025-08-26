@@ -381,7 +381,9 @@ async def payment_rent_scoot(callback: CallbackQuery):
     bike_id = callback.data.split('-')[1]
     order_id = f'order_{uuid.uuid4().hex[:8]}_{bike_id}_{tg_id}'
 
-    created_bill: Bill = await cl.create_bill(amount=int(price), order_id=order_id, currency_in='RUB')
+    pledge = 2000
+
+    created_bill: Bill = await cl.create_bill(amount=int(price) + pledge, order_id=order_id, currency_in='RUB')
     if int(days) == 1:
         text_time = "1 день"
     elif int(days) < 5:
@@ -399,9 +401,9 @@ async def payment_rent_scoot(callback: CallbackQuery):
         ]
     )
 
-    msg = await callback.message.edit_text(f'Оплатите {price}', reply_markup=keyboard)
+    msg = await callback.message.edit_text(f'Оплатите {price} + залог {pledge}, итого', reply_markup=keyboard)
 
-    await create_payment(tg_id, order_id, created_bill.id, price, days, msg.message_id, f'Аренда скутера на {text_time}')
+    await create_payment(tg_id, order_id, created_bill.id, price, days, msg.message_id, f'Аренда скутера на {text_time}', pledge=pledge)
 
 
 @router.callback_query(F.data.split('-')[0] == 'payment_to_hands')
@@ -415,6 +417,7 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
     user = await get_user(tg_id)
     order_id = f'order_{uuid.uuid4().hex[:8]}_{bike_id}_{tg_id}'
     days = callback.data.split('-')[-1]
+    pledge = 2000
 
 
     if int(days) == 1:
@@ -443,21 +446,10 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
 
 
 
-    admin_messages = {}
-
-    for admin in admins:
-        msg = await bot.send_message(
-            admin[1],
-            text=text,
-            parse_mode='HTML',
-            reply_markup=keyboard_admin
-        )
-        admin_messages[admin[1]] = msg.message_id
-
-    admin_messages_json = json.dumps(admin_messages)
 
 
-    await create_payment(tg_id=tg_id, order_id=order_id, id_='hands', price=price, time=days, message_id=admin_messages_json, description=f'Аренда скутера на {text_time}')
+
+
 
     user_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -468,7 +460,7 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
     )
 
     # Отправка сообщения пользователю
-    await callback.message.edit_text(
+    msg_user = await callback.message.edit_text(
         text=(
             "✅ Ваша заявка на аренду отправлена администратору!\n"
             "Ожидайте подтверждения."
@@ -476,6 +468,22 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
         parse_mode="HTML",
         reply_markup=user_keyboard
     )
+
+    messages = {}
+
+    for admin in admins:
+        msg = await bot.send_message(
+            admin[1],
+            text=text,
+            parse_mode='HTML',
+            reply_markup=keyboard_admin
+        )
+        messages[admin[1]] = msg.message_id
+    messages[tg_id] = msg_user.message_id
+    messages_json = json.dumps(messages)
+
+
+    await create_payment(tg_id=tg_id, order_id=order_id, id_='hands', price=price, time=days, message_id=messages_json, description=f'Аренда скутера на {text_time}', pledge=pledge)
 
 
 

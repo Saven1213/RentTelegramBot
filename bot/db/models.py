@@ -129,6 +129,11 @@ class Pledge(Base):
 
     amount: Mapped[float] = mapped_column(Float)
 
+    order_id: Mapped[str] = mapped_column(String, nullable=True)
+
+    status: Mapped[str] = mapped_column(String)
+
+
 class Name(Base):
     __tablename__ = 'names'
 

@@ -10,6 +10,7 @@ from bot.db.crud.equips import save_equips
 from bot.db.crud.mix_conn import rent_bike
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
+from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent
 from bot.db.crud.user import get_user, get_all_users
 
@@ -238,7 +239,7 @@ async def check_rent_history(callback: CallbackQuery):
             ]
         )
 
-        await callback.message.answer(
+        await callback.message.edit_text(
             f"📋 <b>ИСТОРИЯ АРЕНД</b>\n"
             f"👤 <i>Пользователь: @{user[2] or 'Неизвестный'}</i>\n\n"
             f"🏍️ <b>Список всех поездок:</b>\n"
@@ -413,7 +414,7 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
     await change_status_order(order_id, 'success')
 
     order = await get_order(order_id)
-    order_msgs_json = order[-2]
+    order_msgs_json = order[-3]
     order_msgs = json.loads(order_msgs_json)
 
     admin_keyboard = InlineKeyboardMarkup(
@@ -423,17 +424,18 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main"),
                           InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]]
     )
-
+    pledge = 2000
     # сначала редактируем текущее сообщение
     try:
         await callback.message.edit_text(
             text=(
-                "✅ <b>Аренда подтверждена!</b>\n\n"
-                "Вы успешно подтвердили заявку пользователя на аренду скутера.\n"
-                f"Выбранная экипировка: {', '.join(selected_items) if selected_items else 'не выбрано'}"
+                "✅ Подтверждено\n\n"
+                f"▫️ Аренда: {int(order[4])} ₽\n"
+                f"▫️ Залог: {pledge} ₽\n"
+                f"▫️ Итого: {int(order[4] + pledge)} ₽\n"
+                f"▫️ Экип: {', '.join(selected_items) if selected_items else 'нет'}"
             ),
-            parse_mode="HTML",
-            reply_markup=admin_keyboard
+            parse_mode='HTML', reply_markup=admin_keyboard
         )
     except Exception:
         pass
@@ -459,7 +461,8 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         reply_markup=user_keyboard
     )
 
-    await rent_bike(order[1], bike_id, order[-1])
+    await rent_bike(order[1], int(bike_id), order[-2])
+    await add_pledge(order[1], pledge, order_id, int(bike_id))
 
 
 
