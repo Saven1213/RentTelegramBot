@@ -400,34 +400,21 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
 
     order = await get_order(order_id)
 
-    # получаем выбранные коды предметов, например "hbc"
     selected_codes = parts[3] if len(parts) > 3 else ""
-
-    # карта кодов → предметы
     code_to_item = {"h": "шлем", "b": "багажник", "c": "цепь", "s": "сумка"}
     selected_items = [code_to_item[c] for c in selected_codes if c in code_to_item]
 
-    # переводим выбор в булевы значения для БД
     helmet = 'шлем' in selected_items
     chain = 'цепь' in selected_items
     box = 'сумка' in selected_items
     trunk = 'багажник' in selected_items
 
-    # сохраняем экипировку
     await save_equips(order[1], helmet, chain, box, trunk)
-
     await change_status_order(order_id, 'success')
 
     order = await get_order(order_id)
-    order_msgs_json = order[-1]
+    order_msgs_json = order[-2]
     order_msgs = json.loads(order_msgs_json)
-
-    # удаляем сообщения админов
-    for admin_tg_id, msg_id in order_msgs.items():
-        try:
-            await bot.delete_message(chat_id=admin_tg_id, message_id=int(msg_id))
-        except Exception:
-            pass
 
     admin_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
@@ -437,16 +424,27 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
                           InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]]
     )
 
-    # уведомление админа
-    await callback.message.edit_text(
-        text=(
-            "✅ <b>Аренда подтверждена!</b>\n\n"
-            "Вы успешно подтвердили заявку пользователя на аренду скутера.\n"
-            f"Выбранная экипировка: {', '.join(selected_items) if selected_items else 'не выбрано'}"
-        ),
-        parse_mode="HTML",
-        reply_markup=admin_keyboard
-    )
+    # сначала редактируем текущее сообщение
+    try:
+        await callback.message.edit_text(
+            text=(
+                "✅ <b>Аренда подтверждена!</b>\n\n"
+                "Вы успешно подтвердили заявку пользователя на аренду скутера.\n"
+                f"Выбранная экипировка: {', '.join(selected_items) if selected_items else 'не выбрано'}"
+            ),
+            parse_mode="HTML",
+            reply_markup=admin_keyboard
+        )
+    except Exception:
+        pass
+
+    # потом удаляем остальные сообщения админов
+    for admin_tg_id, msg_id in order_msgs.items():
+        if int(admin_tg_id) != user_id:  # не удаляем сообщение того админа, кто подтвердил
+            try:
+                await bot.delete_message(chat_id=admin_tg_id, message_id=int(msg_id))
+            except Exception:
+                pass
 
     # уведомление пользователя
     await bot.send_message(
@@ -461,69 +459,8 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         reply_markup=user_keyboard
     )
 
-    await rent_bike(order[1], bike_id, order[-2])
+    await rent_bike(order[1], bike_id, order[-1])
 
-
-@router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
-async def cancel_but_rent(callback: CallbackQuery, bot: Bot):
-    order_id = callback.data.split('-')[1]
-
-
-
-
-
-    order = await get_order(order_id)
-    order_msgs_json = order[-1]
-    order_msgs = json.loads(order_msgs_json)
-
-    for admin_tg_id, msg_id in order_msgs.items():
-        try:
-            await bot.delete_message(chat_id=admin_tg_id, message_id=int(msg_id))
-        except Exception as e:
-
-            pass
-
-    await change_status_order(order_id, 'fail')
-
-
-    admin_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
-            ]
-        ]
-    )
-
-    user_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🏠 Главное меню", callback_data="main"),
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile")
-            ]
-        ]
-    )
-
-    await bot.send_message(
-        chat_id=order[1],
-        text=(
-            "❌ <b>Аренда отклонена</b>\n\n"
-            "К сожалению, ваша заявка на аренду скутера была отклонена администратором.\n"
-            "Вы можете попробовать оформить аренду позже или выбрать другой транспорт.\n\n"
-            "Не расстраивайтесь — всегда найдётся способ прокатиться! 🚴‍♂️"
-        ),
-        parse_mode="HTML",
-        reply_markup=user_keyboard
-    )
-
-    await callback.message.edit_text(
-        text=(
-            "❌ <b>Аренда отклонена</b>\n\n"
-            "Вы отклонили заявку пользователя на аренду скутера.\n"
-            "Сообщение о решении было отправлено пользователю."
-        ),
-        parse_mode="HTML",
-        reply_markup=admin_keyboard
-    )
 
 
 

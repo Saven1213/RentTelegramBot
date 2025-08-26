@@ -3,12 +3,20 @@ from datetime import datetime, timedelta
 
 DB_PATH = "rent-bike.db"
 
-async def rent_bike(tg_id, bike_id, time):
+from datetime import datetime, timedelta
+import aiosqlite
+
+
+async def rent_bike(tg_id: int, bike_id: int, days: int, pledge: float | int = 0):
     """
     Арендует скутер для пользователя.
-    Возвращает tuple: (user_tuple, bike_tuple, rented_now)
-    """
+    - tg_id: Telegram ID пользователя
+    - bike_id: ID скутера
+    - days: срок аренды (целое число)
+    - pledge: залог (может быть 0, если не нужен)
 
+    Возвращает tuple: (user_tuple, bike_tuple, rented_now: bool)
+    """
     async with aiosqlite.connect("rent-bike.db") as conn:
         cursor = await conn.cursor()
 
@@ -16,9 +24,8 @@ async def rent_bike(tg_id, bike_id, time):
         await cursor.execute("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
         user = await cursor.fetchone()
 
-        # Если пользователь уже арендует — возвращаем с rented_now=False
-        if user[3] is not None and user[3] != 'null':
-            # Получаем скутер на всякий случай
+        # Проверяем, не арендует ли уже
+        if user and user[3] is not None and user[3] != 'null':
             await cursor.execute("SELECT * FROM bikes WHERE id = ?", (user[3],))
             bike = await cursor.fetchone()
             return user, bike, False
@@ -27,7 +34,7 @@ async def rent_bike(tg_id, bike_id, time):
         await cursor.execute("SELECT * FROM bikes WHERE id = ?", (bike_id,))
         bike = await cursor.fetchone()
 
-        # Обновляем данные пользователя и скутера
+        # Обновляем пользователя и скутер
         await cursor.execute(
             "UPDATE users SET bike_id = ?, bike_name = ? WHERE tg_id = ?",
             (bike_id, bike[2], tg_id)
@@ -39,13 +46,27 @@ async def rent_bike(tg_id, bike_id, time):
 
         # Добавляем запись о прокате
         start_time = datetime.utcnow()
-        end_time = start_time + timedelta(days=time)
+        end_time = start_time + timedelta(days=int(days))
+
         await cursor.execute(
-            "INSERT INTO rent_details (user_id, bike_id, start_time, end_time, status, notified) VALUES (?, ?, ?, ?, ?, ?)",
-            (tg_id, bike_id, start_time.isoformat(), end_time.isoformat(), "active", False)
+            """
+            INSERT INTO rent_details (user_id, bike_id, start_time, end_time, days, pledge, status, notified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                tg_id,
+                bike_id,
+                start_time.isoformat(),
+                end_time.isoformat(),
+                int(days),
+                pledge,
+                "active",
+                False
+            )
         )
 
         await conn.commit()
         return user, bike, True
+
 
 

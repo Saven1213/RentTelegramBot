@@ -27,9 +27,6 @@ class User(Base):
     bike_name: Mapped[str] = mapped_column(nullable=True)
 
 
-
-
-
     refferals: Mapped[int] = mapped_column(default=0)
 
     ban: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -101,6 +98,7 @@ class RentDetail(Base):
     end_time: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(default='active')  # 'active'/'completed'/'cancelled'
     days: Mapped[int] = mapped_column(Integer)
+    pledge: Mapped[int] = mapped_column(Integer)
 
 class Dept(Base):
     __tablename__ = 'debts'
@@ -119,6 +117,30 @@ class Equip(Base):
     chain: Mapped[bool] = mapped_column(Boolean, default=False)
     box: Mapped[bool] = mapped_column(Boolean, default=False)
     trunk: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class Pledge(Base):
+    __tablename__ = 'pledges'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    tg_id: Mapped[int] = mapped_column(Integer)
+
+    bike_id: Mapped[int] = mapped_column(Integer)
+
+    amount: Mapped[float] = mapped_column(Float)
+
+class Name(Base):
+    __tablename__ = 'names'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    tg_id: Mapped[int] = mapped_column(Integer)
+
+    first_name: Mapped[str] = mapped_column(String)
+
+    last_name: Mapped[str] = mapped_column(String)
+
+    number: Mapped[str] = mapped_column(String)
 
 
 async def async_main():
