@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from bot.db.crud.bike import get_bike_by_id
 from bot.db.crud.mix_conn import get_user_and_data
 from bot.db.crud.names import get_personal_data, add_personal_data
 from bot.db.crud.photos.map import get_map
@@ -232,7 +233,7 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
     await state.clear()
 
     kb_done = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🏠 Личный кабинет", callback_data="profile")]]
+        inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
     )
 
     await bot.delete_message(chat_id=tg_id, message_id=data['msg3'])
@@ -262,12 +263,71 @@ async def city_map(callback: CallbackQuery, bot: Bot, state: FSMContext):
         ]
     )
 
-    msg_for_del = await callback.message.answer_photo(photo=file_id, caption='Карта границ', reply_markup=keyboard)
+    msg_for_del = await callback.message.answer_photo(photo=file_id, caption=(
+        "🚧 <b>Границы зоны</b>\n"
+        "▫️ За пределами - скутер блокируется"
+    ),
+    parse_mode='HTML', reply_markup=keyboard)
 
     await state.clear()
 
     await state.update_data(msg_for_del=msg_for_del.message_id)
 
+
+@router.callback_query(F.data == 'my_scooter')
+async def my_scooter(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    tg_id = callback.from_user.id
+    user = await get_user(tg_id)
+    pd = await get_personal_data(tg_id)
+
+    if user[3] is None or user[3] == 'null':
+
+        if pd:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🛵 Арендовать скутер', callback_data='scooter')],
+                [InlineKeyboardButton(text='◀️ Назад', callback_data='profile')]
+            ])
+            await callback.message.edit_text(
+                '🚫 <b>У вас нет активной аренды</b>\n\n'
+                '💡 Вы можете арендовать скутер прямо сейчас!',
+                parse_mode='HTML',
+                reply_markup=keyboard
+            )
+        else:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='📝 Заполнить анкету', callback_data='action')],
+                [InlineKeyboardButton(text='◀️ Назад', callback_data='profile')]
+            ])
+            await callback.message.edit_text(
+                '📋 <b>Анкета не заполнена</b>\n\n'
+                '📝 Для аренды скутера необходимо заполнить анкету',
+                parse_mode='HTML',
+                reply_markup=keyboard
+            )
+
+    else:
+
+        bike = await get_bike_by_id(user[3])
+        next_oil_change = f'{bike[4] + 3000}  км' if bike[4] else "не указана"
+        last_oil_change = f'{bike[4]}  км' or "не указана"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='📄 Документы', callback_data='documents')],
+            [InlineKeyboardButton(text='◀️ Назад', callback_data='profile')]
+        ])
+
+        await callback.message.edit_text(
+            f'🏍 <b>ВАШ СКУТЕР</b>\n\n'
+            f'<code>┌────────────────────────┐</code>\n'
+            f'<b>│</b> 🏍 <b>Модель:</b> {bike[2]}\n'
+            f'<b>│</b> 🔧 <b>Замена масла:</b> {last_oil_change}\n'
+            f'<b>│</b> ⏰ <b>Следующая замена:</b> {next_oil_change[0], next_oil_change[1]}\n'
+            f'<code>└────────────────────────┛</code>\n\n'
+            f'💡 <i>Управляйте вашей арендой</i>',
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
 
 
 

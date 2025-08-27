@@ -388,10 +388,12 @@ async def payment_rent_scoot(callback: CallbackQuery):
 
     pledge = 2000
 
+    price_with_pledge = int(price) + pledge
 
 
 
-    created_bill: Bill = await cl.create_bill(amount=10, order_id=order_id, currency_in='RUB')
+
+    created_bill: Bill = await cl.create_bill(amount=price_with_pledge, order_id=order_id, currency_in='RUB')
     if int(days) == 1:
         text_time = "1 день"
     elif int(days) < 5:

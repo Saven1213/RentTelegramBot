@@ -485,12 +485,12 @@ async def settings(callback: CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text='Добавить/изменить фото карты', callback_data='change_map')
+                InlineKeyboardButton(text='📍 Обновить карту', callback_data='change_map')
             ]
         ]
     )
 
-    await callback.message.edit_text('Настройки: ', reply_markup=keyboard)
+    await callback.message.edit_text('⚙️ Настройки ⚙️ ', reply_markup=keyboard)
 
 
 class ChangeMap(StatesGroup):
