@@ -80,7 +80,7 @@ async def check_payments(bot: Bot) -> None:
                 ]
             )
 
-            if time_diff > 1:
+            if time_diff > 15:
                 await cursor.execute(f'''
                     UPDATE {t}
                     SET status = 'expired',

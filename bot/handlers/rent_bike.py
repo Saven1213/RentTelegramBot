@@ -258,38 +258,43 @@ async def state_period_handler(message: Message, state: FSMContext):
     data = await state.get_data()
     rent_data = data.get("rent_data")
 
+
     if msg.isdigit():
         days = int(msg)
-        if days >= 3:
+        if days < 36500:
+            if days >= 3:
 
-            callback_data = f"rent_scooter_but-{rent_data}-{days}-none"
+                callback_data = f"rent_scooter_but-{rent_data}-{days}-none"
 
 
-            await message.answer(
-                f"⏳ Вы указали срок аренды: <b>{days} дней</b>.\n\n"
-                f"✅ Проверьте данные и подтвердите аренду, либо измените срок.",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[
-                        InlineKeyboardButton(
-                            text="✅ Подтвердить аренду",
-                            callback_data=callback_data
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="🔄 Изменить срок аренды",
-                            callback_data=f"write_period-{rent_data}"
-                        )
-                    ]]
-                ), parse_mode='HTML'
-            )
+                await message.answer(
+                    f"⏳ Вы указали срок аренды: <b>{days} дней</b>.\n\n"
+                    f"✅ Проверьте данные и подтвердите аренду, либо измените срок.",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text="✅ Подтвердить аренду",
+                                callback_data=callback_data
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="🔄 Изменить срок аренды",
+                                callback_data=f"write_period-{rent_data}"
+                            )
+                        ]]
+                    ), parse_mode='HTML'
+                )
 
-            await state.clear()
+                await state.clear()
+            else:
+                await message.answer(
+                    "⚠️ Минимальный срок аренды — <b>3 дня</b>.\n"
+                    "Попробуйте ввести другое количество дней ⬇️", parse_mode='HTML'
+                )
         else:
-            await message.answer(
-                "⚠️ Минимальный срок аренды — <b>3 дня</b>.\n"
-                "Попробуйте ввести другое количество дней ⬇️", parse_mode='HTML'
-            )
+            await message.answer('⛔ Вы не можете арендовать больше чем на 100 лет!')
+
     else:
         await message.answer(
             "❌ Неверный формат ввода.\n\n"
@@ -350,7 +355,7 @@ async def but_rent(callback: CallbackQuery):
     # )
 
         keyboard_invoice = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='💳 Оплатить', callback_data=f'payment_rent-{bike_id}-{price}-{time_}'), InlineKeyboardButton(text='💸 Оплатить в руки', callback_data=f'payment_to_hands-{bike_id}-{price}-{time_}')],
+            [InlineKeyboardButton(text='💳 Оплатить', callback_data=f'payment_rent-{bike_id}-{price}-{time_}'), InlineKeyboardButton(text='💸 Оплатить в лично', callback_data=f'payment_to_hands-{bike_id}-{price}-{time_}')],
             [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]
         ])

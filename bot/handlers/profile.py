@@ -1,6 +1,6 @@
 import re
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -59,7 +59,7 @@ async def profile(callback: CallbackQuery):
 👤 <b>МОЙ ПРОФИЛЬ</b>
 
 📋 <b>Основная информация:</b>
-├ 🔹 Username: @{user[2] or 'Не указан'}
+
 ├ 🔹 Имя: {name}
 └ 🔹 ID: <code>{tg_id}</code>
 
@@ -78,67 +78,14 @@ class Action(StatesGroup):
     number = State()
 
 
+NAME_RE = re.compile(r"^[A-Za-zА-Яа-яЁё\-]+$")
+
 def back_kb():
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать сначала", callback_data="action")]]
-    )
-
-@router.callback_query(F.data == "action")
-async def action_start(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(Action.first_name)
-    await callback.message.edit_text(
-        "Давай познакомимся! ✍️\n\nВведите ваше <b>имя</b> (только буквы):",
-        parse_mode="HTML",
-        reply_markup=back_kb()
-    )
-
-NAME_RE = re.compile(r"^[A-Za-zА-Яа-яЁё\-]+$")  # буквы + дефис
-
-@router.message(Action.first_name)
-async def action_fn(message: Message, state: FSMContext):
-    msg = (message.text or "").strip()
-
-    if not NAME_RE.fullmatch(msg):
-        await message.answer(
-            "Имя может содержать только буквы и дефис. Попробуйте ещё раз:",
-            reply_markup=back_kb()
-        )
-        return
-
-    await state.update_data(first_name=msg.capitalize())
-    await state.set_state(Action.last_name)
-    await message.answer(
-        "Отлично! Теперь введите вашу <b>фамилию</b> (только буквы):",
-        parse_mode="HTML",
-        reply_markup=back_kb()
-    )
-
-@router.message(Action.last_name)
-async def action_ln(message: Message, state: FSMContext):
-    msg = (message.text or "").strip()
-
-    if not NAME_RE.fullmatch(msg):
-        await message.answer(
-            "Фамилия может содержать только буквы и дефис. Попробуйте ещё раз:",
-            reply_markup=back_kb()
-        )
-        return
-
-    await state.update_data(last_name=msg.capitalize())
-    await state.set_state(Action.number)
-    await message.answer(
-        "Хорошо! Теперь введите ваш <b>номер телефона</b>.\n\n"
-        "Примеры: <code>89182223455</code>, <code>+79284569475</code>, <code>+7-918-037-84-28</code>",
-        parse_mode="HTML",
-        reply_markup=back_kb()
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать сначала", callback_data="action")]])
 
 def normalize_phone(raw: str) -> str | None:
-    # Убираем все пробелы/скобки/дефисы
     s = (raw or "").strip()
     s = s.replace("(", "").replace(")", "").replace(" ", "").replace("-", "")
-    # Допускаем форматы: 8XXXXXXXXXX, +7XXXXXXXXXX, 7XXXXXXXXXX
     if s.startswith("+"):
         if s.startswith("+7") and s[1:].isdigit() and len(s) == 12:
             return s
@@ -150,10 +97,100 @@ def normalize_phone(raw: str) -> str | None:
             return "+7" + s[1:]
     return None
 
+
+
+
+@router.callback_query(lambda c: c.data == "action")
+async def action_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(Action.first_name)
+    msg = await callback.message.edit_text(
+        "Давай познакомимся! ✍️\n\nВведите ваше <b>имя</b> (только буквы):",
+        parse_mode="HTML"
+    )
+    await state.update_data(msg1=msg.message_id)
+
+
+@router.message(Action.first_name)
+async def action_fn(message: Message, state: FSMContext, bot: Bot):
+    msg_text = (message.text or "").strip()
+    if not NAME_RE.fullmatch(msg_text):
+        await message.answer(
+            "Имя может содержать только буквы и дефис. Попробуйте ещё раз:",
+            reply_markup=back_kb()
+        )
+        return
+
+
+    data = await state.get_data()
+    tg_id = message.from_user.id
+    msg_user1 = message.message_id
+
+
+    await state.set_state(Action.last_name)
+    msg2 = await message.answer(
+        "Отлично! Теперь введите вашу <b>фамилию</b> (только буквы):",
+        parse_mode="HTML",
+        reply_markup=back_kb()
+    )
+    await state.update_data(first_name=msg_text.capitalize(), msg2=msg2.message_id)
+
+
+    try:
+        await bot.delete_message(chat_id=tg_id, message_id=data['msg1'])
+    except:
+        pass
+    try:
+        await bot.delete_message(chat_id=tg_id, message_id=msg_user1)
+    except:
+        pass
+
+
+@router.message(Action.last_name)
+async def action_ln(message: Message, state: FSMContext, bot: Bot):
+    msg_text = (message.text or "").strip()
+    if not NAME_RE.fullmatch(msg_text):
+        await message.answer(
+            "Фамилия может содержать только буквы и дефис. Попробуйте ещё раз:",
+            reply_markup=back_kb()
+        )
+        return
+
+    data = await state.get_data()
+    tg_id = message.from_user.id
+    msg_user2 = message.message_id
+
+
+    await state.set_state(Action.number)
+    msg3 = await message.answer(
+        "Хорошо! Теперь введите ваш <b>номер телефона</b>.\n\n"
+        "Примеры: <code>89182223455</code>, <code>+79284569475</code>, <code>+7-918-037-84-28</code>",
+        parse_mode="HTML",
+        reply_markup=back_kb()
+    )
+    await state.update_data(last_name=msg_text.capitalize(), msg3=msg3.message_id)
+
+
+    try:
+        await bot.delete_message(chat_id=tg_id, message_id=data['msg2'])
+    except:
+        pass
+    try:
+        await bot.delete_message(chat_id=tg_id, message_id=msg_user2)
+    except:
+        pass
+
+# Ввод номера
 @router.message(Action.number)
-async def action_number(message: Message, state: FSMContext):
+async def action_number(message: Message, state: FSMContext, bot: Bot):
     tg_id = message.from_user.id
     normalized = normalize_phone(message.text)
+    msg_user3 = message.message_id
+
+
+    try:
+        await bot.delete_message(chat_id=tg_id, message_id=msg_user3)
+    except Exception as e:
+        pass
 
     if not normalized:
         await message.answer(
@@ -168,16 +205,16 @@ async def action_number(message: Message, state: FSMContext):
     first_name = data.get("first_name", "")
     last_name  = data.get("last_name", "")
 
-
     await add_personal_data(tg_id, first_name, last_name, normalized)
-
     await state.clear()
 
     kb_done = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="🏠 Личный кабинет", callback_data="profile")]]
     )
+
+    await bot.delete_message(chat_id=tg_id, message_id=data['msg3'])
     await message.answer(
-        f"🎉 Отлично, {first_name}!\n\n"
+        f"🎉 Отлично, {first_name} {last_name}!\n\n"
         "Анкета успешно заполнена. Теперь вы можете перейти в <b>Личный кабинет</b> и продолжить 🚀",
         parse_mode="HTML",
         reply_markup=kb_done
