@@ -12,6 +12,7 @@ import json
 from bot.db.crud.bike import get_bike_by_id
 from bot.db.crud.equips import save_equips
 from bot.db.crud.mix_conn import rent_bike
+from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
 from bot.db.crud.photos.map import add_photo
@@ -461,7 +462,7 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
             except Exception as e:
                 print(f"Ошибка удаления {chat_id=} {msg_id=}: {e}")
 
-    # уведомление пользователя
+
     await bot.send_message(
         chat_id=order[1],
         text=(
@@ -476,6 +477,49 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
 
     await rent_bike(order[1], int(bike_id), order[-2])
     await add_pledge(order[1], pledge, order_id, int(bike_id))
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
+async def cancel_rent_admin(callback: CallbackQuery, bot: Bot):
+    data = callback.data.split('-')[1]
+    order = await get_order(data)
+    msg_dict = json.loads(order[-3])
+
+
+    for role_name, role_dict in msg_dict.items():
+        for chat_id, msg_id in role_dict.items():
+            try:
+                if role_name == 'admin':
+                    await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
+                elif role_name == 'user':
+                    await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
+            except Exception as e:
+                print(f"Ошибка удаления {chat_id=} {msg_id=}: {e}")
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
+        ]
+    )
+
+
+    await bot.send_message(
+        chat_id=order[1],
+        text="❌ <i>Администратор отменил ваш запрос на аренду</i>\n\n",
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+
+    await fail_status(order[2])
+
+
+
+
+
+
+
+
+
+
 
 
 @router.callback_query(F.data == 'settings_admin')
