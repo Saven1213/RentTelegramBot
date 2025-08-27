@@ -7,6 +7,7 @@ import aiosqlite
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiosqlite import connect
 
+from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.check_status import check_payments
 
 DB_PATH = "rent-bike.db"  # путь к базе
@@ -103,7 +104,7 @@ async def deactivate_expired_rents(bot: Bot):
 
                         bike_info = f"{bike_name} #{bike_id}" if bike_id and bike_name else "не указан"
 
-                        # Обновляем статусы (теперь после получения данных)
+
                         await db.execute(
                             "UPDATE rent_details SET status = 'unactive' WHERE user_id = ? AND end_time = ?",
                             (user_id, end_time_str)
@@ -148,6 +149,8 @@ async def deactivate_expired_rents(bot: Bot):
                         )
 
                         # Сообщение админам
+                        pd = await get_personal_data(user_id)
+
                         for admin_tuple in admins:
                             admin_id = admin_tuple[0]
                             try:
@@ -156,7 +159,7 @@ async def deactivate_expired_rents(bot: Bot):
                                     f"<code>┌──────────────────┐</code>\n"
                                     f"<b>  🏁 АРЕНДА ЗАВЕРШЕНА  </b>\n"
                                     f"<code>├──────────────────┤</code>\n"
-                                    f"<b>│</b> 👤 @{username}\n"
+                                    f"<b>│</b> 👤 {pd[3]} {pd[4]}\n"
                                     f"<b>│</b> 🔢 <code>{user_id}</code>\n"
                                     f"<b>│</b> 🏍 {bike_info}\n"
                                     f"<b>│</b> ⏰ {end_time_msk.strftime('%d.%m %H:%M')}\n"

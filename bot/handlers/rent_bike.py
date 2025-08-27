@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 
 from bot.db.crud.bike import get_bike_by_type, get_bike_by_id, get_price
 from bot.db.crud.mix_conn import rent_bike
+from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.create_payment import create_payment
 from bot.db.crud.user import get_user, get_all_admins
@@ -443,9 +444,11 @@ async def to_hands(callback: CallbackQuery, bot: Bot):
     else:
         text_time = f"{days} дней"
 
+    pd = await get_personal_data(tg_id)
+
     text = (
         f"📢 <b>Новая заявка на аренду</b>\n\n"
-        f"👤 Пользователь: <code>{user[2]}</code>\n"
+        f"👤 Пользователь: <code>{pd[2]} {pd[3]}</code>\n"
         f"🛵 Скутер: <b>{bike_type}</b> (ID: <code>{bike[1]}</code>)\n"
         f"💵 Сумма аренды: <b>{price} ₽</b>\n\n"
         "✅ Подтвердите или отмените аренду ниже"
