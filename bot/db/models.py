@@ -63,18 +63,18 @@ class Bike(Base):
 class Payment(Base):
     __tablename__ = "payments"
 
-    # Основные поля
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     order_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     bill_id: Mapped[Optional[str]] = mapped_column(String(50))
 
-    # Финансовые данные
+
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
     commission: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # Статусы
+
 
     status: Mapped[str] = mapped_column(String(20), default="pending")
 
@@ -85,7 +85,7 @@ class Payment(Base):
 
     description: Mapped[Optional[str]] = mapped_column(String(300))
     message_id: Mapped[str] = mapped_column(String)
-
+    days: Mapped[int] = mapped_column(Integer)
 
 class RentDetail(Base):
     __tablename__ = 'rent_details'
@@ -147,6 +147,35 @@ class Name(Base):
     last_name: Mapped[str] = mapped_column(String)
 
     number: Mapped[str] = mapped_column(String)
+
+class PhotoBikesRent(Base):
+    __tablename__ = 'photos_rent_bikes'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    bike_id: Mapped[int] = mapped_column(Integer)
+
+    file_id: Mapped[str] = mapped_column(String)
+
+class PhotoMap(Base):
+    __tablename__ = 'photo_map'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    file_id: Mapped[str] = mapped_column(String)
+
+class Document(Base):
+    __tablename__ = 'documents'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    bike_id: Mapped[int] = mapped_column(Integer)
+
+    file_id: Mapped[str] = mapped_column(String)
+
+
+
+
 
 
 async def async_main():

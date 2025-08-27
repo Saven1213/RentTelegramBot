@@ -3,7 +3,9 @@ import aiosqlite
 from bot.db.crud.bike import change_status_not_free
 from bot.handlers.notifies import write_period
 
-DB_PATH = 'rent-bike.db'
+from .config import DB_PATH
+
+
 t = 'users'
 async def get_user(tg_id):
     async with aiosqlite.connect(DB_PATH) as conn:

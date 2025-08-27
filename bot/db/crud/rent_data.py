@@ -4,7 +4,7 @@ import aiosqlite
 
 
 
-DB_PATH = 'rent-bike.db'
+from .config import DB_PATH
 t = 'rent_details'
 
 async def add_rent_data(tg_id: int, bike_id: int, days: int):

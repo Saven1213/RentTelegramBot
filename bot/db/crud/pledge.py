@@ -1,6 +1,6 @@
 import aiosqlite
 
-DB_PATH = 'rent-bike.db'
+from .config import DB_PATH
 t = 'pledges'
 
 

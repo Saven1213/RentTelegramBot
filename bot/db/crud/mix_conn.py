@@ -1,7 +1,6 @@
-import aiosqlite
-from datetime import datetime, timedelta
 
-DB_PATH = "rent-bike.db"
+
+from .config import DB_PATH
 
 from datetime import datetime, timedelta
 import aiosqlite
