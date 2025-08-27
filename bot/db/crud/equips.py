@@ -13,3 +13,18 @@ async def save_equips(tg_id, helmet, chain, box, trunk):
         """, (tg_id, helmet,chain, box, trunk))
 
         await conn.commit()
+
+async def get_equips_user(tg_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT *
+        FROM {t}
+        WHERE tg_id = ?
+        """, (tg_id, ))
+
+        data = await cursor.fetchone()
+
+        return data
+
+

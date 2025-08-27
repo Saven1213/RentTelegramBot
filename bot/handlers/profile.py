@@ -8,6 +8,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.db.crud.bike import get_bike_by_id
+from bot.db.crud.equips import get_equips_user
 from bot.db.crud.mix_conn import get_user_and_data
 from bot.db.crud.names import get_personal_data, add_personal_data
 from bot.db.crud.photos.map import get_map
@@ -48,8 +49,8 @@ async def profile(callback: CallbackQuery, state: FSMContext, bot: Bot):
             [InlineKeyboardButton(text="📄 Документы на байк", callback_data="documents")],
             [InlineKeyboardButton(text="🗺️ Карта границ", callback_data="city_map")],
             [
-                InlineKeyboardButton(text="🛡️ Экипировка", callback_data="equips"),
-                InlineKeyboardButton(text="💰 Долги", callback_data="depts")
+                InlineKeyboardButton(text="🛡️ Экипировка", callback_data="my_equips"),
+                InlineKeyboardButton(text="💰 Долги", callback_data="my_depts")
             ],
             [InlineKeyboardButton(text="📊 История платежей", callback_data="history_my_payments")]
         ])
@@ -328,6 +329,51 @@ async def my_scooter(callback: CallbackQuery, state: FSMContext):
             parse_mode='HTML',
             reply_markup=keyboard
         )
+
+
+@router.callback_query(F.data == 'my_equips')
+async def my_equips(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    equips = await get_equips_user(tg_id)
+
+
+    available_equips = []
+    if equips[2]:
+        available_equips.append("🪖 Шлем")
+    if equips[3]:
+        available_equips.append("⛓️ Цепь")
+    if equips[4]:
+        available_equips.append("🎒 Сумка")
+    if equips[5]:
+        available_equips.append("🧳 Багажник")
+
+
+    if available_equips:
+        text = (
+            "🛡️ <b>ВАША ЭКИПИРОВКА</b>\n\n"
+            "✅ <b>Доступно:</b>\n"
+            f"{chr(10).join(['▫️ ' + item for item in available_equips])}\n\n"
+
+        )
+    else:
+        text = (
+            "🛡️ <b>ВАША ЭКИПИРОВКА</b>\n\n"
+            "🚫 <i>У вас нет доступной экипировки</i>\n\n"
+            "💡 <i>Обратитесь к администратору</i>"
+        )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="profile")]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text=text,
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+
 
 
 
