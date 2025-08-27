@@ -29,3 +29,15 @@ async def add_photo(file_id):
 
         await conn.commit()
 
+async def get_map():
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("""
+        SELECT file_id
+        FROM photo_map
+        """)
+
+        file_id = await cursor.fetchone()
+
+        return file_id[0]
+

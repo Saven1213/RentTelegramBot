@@ -1,5 +1,9 @@
+from gettext import textdomain
+
 from aiogram import Router, F, Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 from datetime import datetime
 from aiogram.filters.callback_data import CallbackData
 
@@ -10,6 +14,7 @@ from bot.db.crud.equips import save_equips
 from bot.db.crud.mix_conn import rent_bike
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
+from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent
 from bot.db.crud.user import get_user, get_all_users
@@ -40,6 +45,9 @@ async def admin_menu(callback: CallbackQuery):
                     InlineKeyboardButton(text='🛵 Посмотреть активные аренды', callback_data='active_rents')
                 ],
                 [
+                    InlineKeyboardButton(text='⚙️ Настройки', callback_data='settings_admin')
+                ],
+                [
                     InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
                 ]
             ]
@@ -55,6 +63,9 @@ async def admin_menu(callback: CallbackQuery):
                 ],
                 [
                     InlineKeyboardButton(text='🛵 Посмотреть активные аренды', callback_data='active_rents')
+                ],
+                [
+                    InlineKeyboardButton(text='⚙️ Настройки', callback_data='settings_admin')
                 ],
                 [
                     InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
@@ -441,7 +452,7 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         pass
 
     # потом удаляем остальные сообщения админов
-    for role_name, role_dict in order_msgs.items():  # role_name = 'admin' или 'user'
+    for role_name, role_dict in order_msgs.items():
         for chat_id, msg_id in role_dict.items():
             if role_name == 'admin' and int(chat_id) == user_id:
                 continue
@@ -465,6 +476,132 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
 
     await rent_bike(order[1], int(bike_id), order[-2])
     await add_pledge(order[1], pledge, order_id, int(bike_id))
+
+
+@router.callback_query(F.data == 'settings_admin')
+async def settings(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='Добавить/изменить фото карты', callback_data='change_map')
+            ]
+        ]
+    )
+
+    await callback.message.edit_text('Настройки: ', reply_markup=keyboard)
+
+
+class ChangeMap(StatesGroup):
+    change_new_map = State()
+
+
+def back_kb():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="settings_admin")]
+        ]
+    )
+
+
+@router.callback_query(F.data == 'change_map')
+async def change_map(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ChangeMap.change_new_map)
+
+    await callback.answer()
+
+    msg = await callback.message.edit_text(
+        "Пришлите фото новой карты:",
+        reply_markup=back_kb()
+    )
+
+    await state.update_data(msg=msg.message_id)
+
+
+@router.message(ChangeMap.change_new_map, F.photo)
+async def update_map(message: Message, state: FSMContext, bot: Bot):
+
+    tg_id = message.from_user.id
+
+    user = await get_user(tg_id)
+
+    file_id = message.photo[-1].file_id
+    msg_id_del = message.message_id
+
+    await add_photo(file_id)
+    if user[-1] == 'moderator':
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 Все пользователи", callback_data="view_users")
+                ],
+                [
+                    InlineKeyboardButton(text="⚡ Сделать/Снять admin", callback_data="toggle_admin")
+                ],
+                [
+                    InlineKeyboardButton(text="⛔ Забанить/Разбанить", callback_data="toggle_ban")
+                ],
+
+                [
+                    InlineKeyboardButton(text='🛵 Посмотреть активные аренды', callback_data='active_rents')
+                ],
+                [
+                    InlineKeyboardButton(text='⚙️ Настройки', callback_data='settings_admin')
+                ],
+                [
+                    InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
+                ]
+            ]
+        )
+    else:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="👥 Все пользователи", callback_data="view_users")
+                ],
+                [
+                    InlineKeyboardButton(text="⛔ Забанить/Разбанить", callback_data="toggle_ban")
+                ],
+                [
+                    InlineKeyboardButton(text='🛵 Посмотреть активные аренды', callback_data='active_rents')
+                ],
+                [
+                    InlineKeyboardButton(text='⚙️ Настройки', callback_data='settings_admin')
+                ],
+                [
+                    InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")
+                ]
+            ]
+        )
+
+
+    data = await state.get_data()
+    await bot.delete_message(chat_id=tg_id, message_id=data['msg'])
+
+    await bot.send_message(
+        chat_id=tg_id,
+        text='✅ Фото карты успешно обновлено!'
+    )
+    await bot.delete_message(chat_id=tg_id, message_id=msg_id_del)
+
+    await bot.send_message(
+        chat_id=tg_id,
+        text="🛠 Добро пожаловать в админ-панель!\nВыберите действие ниже:",
+        reply_markup=keyboard
+    )
+
+    await state.clear()
+
+
+
+
+
+
+
+
+
+
 
 
 

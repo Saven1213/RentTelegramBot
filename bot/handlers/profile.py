@@ -1,20 +1,34 @@
 import re
+from gettext import textdomain
 
 from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.db.crud.mix_conn import get_user_and_data
 from bot.db.crud.names import get_personal_data, add_personal_data
+from bot.db.crud.photos.map import get_map
 from bot.db.crud.user import get_user
 
 router = Router()
 
 
 @router.callback_query(F.data == 'profile')
-async def profile(callback: CallbackQuery):
+async def profile(callback: CallbackQuery, state: FSMContext, bot: Bot):
     tg_id = callback.from_user.id
+
+    data = await state.get_data()
+    try:
+        if data['msg_for_del']:
+            await bot.delete_message(chat_id=tg_id, message_id=data['msg_for_del'])
+    except KeyError:
+        pass
+
+    await state.clear()
+
+
 
     user, personal_data = await get_user_and_data(tg_id)
 
@@ -65,12 +79,21 @@ async def profile(callback: CallbackQuery):
 
 💎 <i>Управляйте своими арендами и настройками</i>
 """
+    try:
+        msg_for_del = await callback.message.edit_text(
+            text=profile_text,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+    except TelegramBadRequest:
+        msg_for_del = await callback.message.answer(
+            text=profile_text,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
 
-    await callback.message.edit_text(
-        text=profile_text,
-        parse_mode='HTML',
-        reply_markup=keyboard
-    )
+    await state.update_data(msg_for_del=msg_for_del.message_id)
+
 
 class Action(StatesGroup):
     first_name = State()
@@ -219,6 +242,33 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
         parse_mode="HTML",
         reply_markup=kb_done
     )
+
+@router.callback_query(F.data == 'city_map')
+async def city_map(callback: CallbackQuery, bot: Bot, state: FSMContext):
+
+    tg_id = callback.from_user.id
+
+    msg_del = await state.get_data()
+
+    await bot.delete_message(chat_id=tg_id, message_id=msg_del['msg_for_del'])
+
+    file_id = await get_map()
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='↩️ Назад', callback_data=f'profile')
+            ]
+        ]
+    )
+
+    msg_for_del = await callback.message.answer_photo(photo=file_id, caption='Карта границ', reply_markup=keyboard)
+
+    await state.clear()
+
+    await state.update_data(msg_for_del=msg_for_del.message_id)
+
+
 
 
 

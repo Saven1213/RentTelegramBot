@@ -86,6 +86,7 @@ class Payment(Base):
     description: Mapped[Optional[str]] = mapped_column(String(300))
     message_id: Mapped[str] = mapped_column(String)
     days: Mapped[int] = mapped_column(Integer)
+    pledge: Mapped[int] = mapped_column(Integer)
 
 class RentDetail(Base):
     __tablename__ = 'rent_details'
@@ -117,7 +118,7 @@ class Equip(Base):
     chain: Mapped[bool] = mapped_column(Boolean, default=False)
     box: Mapped[bool] = mapped_column(Boolean, default=False)
     trunk: Mapped[bool] = mapped_column(Boolean, default=False)
-    status: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, nullable=True)
 
 class Pledge(Base):
     __tablename__ = 'pledges'
