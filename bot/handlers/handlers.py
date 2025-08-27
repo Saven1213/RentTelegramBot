@@ -85,6 +85,10 @@ async def start_command(message: Message, state: FSMContext):
                     [
                         InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
                         InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
+                    ],
+                    [
+                        InlineKeyboardButton(text='тест', callback_data='extend'),
+                        InlineKeyboardButton(text='позже', callback_data='pay_later-none')
                     ]
                 ])
 
@@ -269,6 +273,10 @@ async def main(callback: CallbackQuery):
 #     except Exception as e:
 #         await callback.answer("❌ Ошибка создания тестового счета", show_alert=True)
 #         # print(f"Test payment error: {e}")
+@router.message(F.photo)
+async def get_photo_id(message: Message):
+    photo = message.photo[-1].file_id
+
 
 
 

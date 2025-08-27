@@ -2,7 +2,9 @@ from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 from aiogram.fsm.state import State, StatesGroup
+from pydantic.v1 import NoneStr
 
+from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.create_payment import create_payment
 from cardlink import CardLink
 from cardlink._types import Bill
@@ -18,8 +20,16 @@ router = Router()
 
 
 
-@router.callback_query(F.data == 'pay_later')
+@router.callback_query(F.data.split('-')[0] == 'pay_later')
 async def pay_later(callback: CallbackQuery):
+
+    data = callback.data.split('-')[1]
+
+    if data != 'none':
+        await fail_status(data)
+
+
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Личный кабинет", callback_data="profile")]
     ])
@@ -47,14 +57,14 @@ async def extend(callback: CallbackQuery, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text='📅 3 дня', callback_data=f'f"pay_extend-3"'),
-            InlineKeyboardButton(text='📅 7 дней', callback_data=f'f"pay_extend-7')
+            InlineKeyboardButton(text='📅 3 дня', callback_data=f'pay_extend-3'),
+            InlineKeyboardButton(text='📅 7 дней', callback_data=f'pay_extend-7')
         ],
         [
-            InlineKeyboardButton(text='📅 30 дней', callback_data=f'f"pay_extend-30')
+            InlineKeyboardButton(text='📅 30 дней', callback_data=f'pay_extend-30')
         ],
         [
-            InlineKeyboardButton(text='✏️ Выбрать вручную', callback_data=f'write_period')
+            InlineKeyboardButton(text='✏️ Выбрать вручную', callback_data=f'write_time')
         ],
         [
             InlineKeyboardButton(text='↩️ Назад', callback_data=f'extend_back')
@@ -75,7 +85,7 @@ async def extend(callback: CallbackQuery, state: FSMContext):
 class SelectPeriodExtend(StatesGroup):
     select_period = State()
 
-@router.callback_query(F.data.split('-')[0] == 'write_period')
+@router.callback_query(F.data == 'write_time')
 async def write_period(callback: CallbackQuery, state: FSMContext):
 
 
@@ -104,31 +114,36 @@ async def confirm_period(message: Message, state: FSMContext):
 
 
     if msg.isdigit():
+
         days = int(msg)
-        if days >= 3:
 
-            callback_data = f"pay_extend-{days}"
+        if days < 36500:
+            if days >= 3:
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text='✅ Подтвердить', callback_data=callback_data)
-                ],
-                [
-                    InlineKeyboardButton(text='🔄 Изменить срок аренды', callback_data='extend')
-                ]
-            ])
+                callback_data = f"pay_extend-{days}"
 
-            await message.answer(
-                f"⏳ Вы указали срок аренды: <b>{days} дней</b>.\n\n"
-                f"✅ Проверьте данные и подтвердите аренду, либо измените срок.",
-                reply_markup=keyboard, parse_mode='HTML')
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='✅ Подтвердить', callback_data=callback_data)
+                    ],
+                    [
+                        InlineKeyboardButton(text='🔄 Изменить срок аренды', callback_data='extend')
+                    ]
+                ])
 
-            await state.clear()
+                await message.answer(
+                    f"⏳ Вы указали срок аренды: <b>{days} дней</b>.\n\n"
+                    f"✅ Проверьте данные и подтвердите аренду, либо измените срок.",
+                    reply_markup=keyboard, parse_mode='HTML')
+
+                await state.clear()
+            else:
+                await message.answer(
+                    "⚠️ Минимальный срок аренды — <b>3 дня</b>.\n"
+                    "Попробуйте ввести другое количество дней ⬇️", parse_mode='HTML'
+                )
         else:
-            await message.answer(
-                "⚠️ Минимальный срок аренды — <b>3 дня</b>.\n"
-                "Попробуйте ввести другое количество дней ⬇️", parse_mode='HTML'
-            )
+            await message.answer('⛔ Вы не можете арендовать больше чем на 100 лет!')
     else:
         await message.answer(
             "❌ Неверный формат ввода.\n\n"
@@ -142,7 +157,7 @@ async def confirm_period(message: Message, state: FSMContext):
 async def extend_back(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 Вернуться к оплате", callback_data="extend")],
-        [InlineKeyboardButton(text="⏳ Отложить оплату", callback_data="pay_later")]
+        [InlineKeyboardButton(text="⏳ Отложить оплату", callback_data="pay_later-none")]
     ])
 
     await callback.message.edit_text(
@@ -165,14 +180,14 @@ async def payment(callback: CallbackQuery):
     tg_id = callback.from_user.id
 
     user = await get_user(tg_id)
-    day, week, month = await get_price(user[4])
+    day, week, month = await get_price(user[3])
 
     if int(data) < 7:
-        price = day
+        price = day * int(data)
     elif int(data) < 30:
-        price = week
+        price = week * int(data)
     else:
-        price = month
+        price = month * int(data)
 
     if int(data) == 1:
         text_time = "1 день"
@@ -196,8 +211,10 @@ async def payment(callback: CallbackQuery):
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text='💳 Оплатить', url=created_bill.link_page_url)]
+            [InlineKeyboardButton(text='💳 Оплатить', url=created_bill.link_page_url)],
+            [InlineKeyboardButton(text='⏳ Отложить оплату', callback_data=f'pay_later-{order_id}')]
         ]
+
     )
     msg = await callback.message.answer(
         text=f"💳 Счет для продления на {data} дней\n"
