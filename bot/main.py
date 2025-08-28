@@ -11,7 +11,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot.db.crud.payments.check_status import check_payments
 from middlewares.ban_middleware import BanMiddleware
 
-from bot.scheduler import check_rent_status, deactivate_expired_rents, delete_old_history, check_payments_job
+from bot.scheduler import check_rent_status, deactivate_expired_rents, delete_old_history, check_payments_job, \
+    check_payments_debts_job
 from config import TOKEN
 from inc_routers import main_router
 
@@ -38,6 +39,7 @@ async def main():
     scheduler.add_job(deactivate_expired_rents, "interval",  minutes=5, args=[bot])
     scheduler.add_job(delete_old_history, 'interval', days=30)
     scheduler.add_job(check_payments_job, 'interval', seconds=30)
+    scheduler.add_job(check_payments_debts_job, 'interval', seconds=30)
     scheduler.start()
 
     try:

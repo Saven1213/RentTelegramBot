@@ -8,7 +8,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiosqlite import connect
 
 from bot.db.crud.names import get_personal_data
-from bot.db.crud.payments.check_status import check_payments
+from bot.db.crud.payments.check_status import check_payments, check_payment_debts
 
 DB_PATH = "rent-bike.db"  # путь к базе
 
@@ -198,3 +198,7 @@ async def delete_old_history():
 async def check_payments_job():
     from bot.main import bot
     await check_payments(bot)
+
+async def check_payments_debts_job():
+    from bot.main import bot
+    await check_payment_debts(bot)

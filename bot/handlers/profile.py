@@ -1,5 +1,7 @@
 import re
 from gettext import textdomain
+import uuid
+from idlelib.editor import keynames
 
 from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -12,8 +14,13 @@ from bot.db.crud.debts import get_debts
 from bot.db.crud.equips import get_equips_user
 from bot.db.crud.mix_conn import get_user_and_data
 from bot.db.crud.names import get_personal_data, add_personal_data
+from bot.db.crud.payments.add_fail_status import fail_status
+from bot.db.crud.payments.create_payment import create_payment
 from bot.db.crud.photos.map import get_map
 from bot.db.crud.user import get_user
+from cardlink._types import Bill, BillStatus
+from bot.config import cl
+
 
 router = Router()
 
@@ -401,7 +408,7 @@ async def my_debts(callback: CallbackQuery):
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text="💳 Оплатить долги",
-                callback_data="pay_debts"
+                callback_data="pay_debts-none"
             )
         ])
 
@@ -426,10 +433,16 @@ class PayDebtStates(StatesGroup):
     waiting_for_debt_choice = State()
 
 
-@router.callback_query(F.data == 'pay_debts')
+@router.callback_query(F.data.split('-')[0] == 'pay_debts')
 async def pay_debts_start(callback: CallbackQuery, state: FSMContext):
     tg_id = callback.from_user.id
     debts = await get_debts(tg_id)
+    data = callback.data.split('-')[1]
+
+    if data != 'none':
+        await fail_status(data)
+
+
 
     if not debts:
         await callback.answer("❌ У вас нет долгов для оплаты")
@@ -574,8 +587,48 @@ async def back_to_my_debts(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.split('-')[0] == 'debt_pay')
 async def debt_pay(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    amount = callback.data.split('-')[1]
+    description = callback.data.split('-')[2]
 
+    description = 'Долг: ' + description
 
+    order_id = f'order-{uuid.uuid4().hex[:8]}-debt-{tg_id}'
+    create_bill: Bill = await cl.create_bill(amount=int(amount), order_id=order_id, ttl=60 * 15)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Оплатить долг", url=create_bill.link_page_url)],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=f'pay_debts-{order_id}')]
+        ]
+    )
+
+    msg = await callback.message.edit_text(
+        text=(
+            f"<code>┌────────────────────┐</code>\n"
+            f"<b>  💰 ОПЛАТА ДОЛГА  </b>\n"
+            f"<code>├────────────────────┤</code>\n"
+            f"<b>│</b> 📋 {description}\n"
+            f"<b>│</b> 💵 Сумма: {amount} ₽\n"
+            f"<code>├────────────────────┤</code>\n"
+            f"<b>│</b> ⏰ 15 минут\n"
+            f"<code>└────────────────────┛</code>\n\n"
+            f"💳 <i>Нажмите для оплаты</i>"
+        ),
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+
+    await create_payment(
+        tg_id=tg_id,
+        order_id=order_id,
+        id_=create_bill.id,
+        time=0,
+        price=int(amount),
+        message_id=msg.message_id,
+        description=description,
+        status='pending_debt'
+    )
 
 
 
