@@ -1,12 +1,39 @@
+# Конфиги и токены
 bot/config.py
-bot/rent-bike.db
-bot/test.py
-bot/.env
+bot/config
+config.py
+config
 .env
+bot/.env
+*.env
+
+# Базы данных
+bot/rent-bike.db
+bot/db.sqlite3
+*.sqlite3
+*.db
+*.sqlite
+
+# IDE и системные файлы
 .idea/
 __pycache__/
 *.pyc
-*.sqlite3
+*.pyo
+*.pyd
+
+# Логи и временные файлы
+*.log
+*.tmp
+*.temp
+
+# Тестовые файлы
 test.py
-bot/db.sqlite3
-cardlink
+bot/test.py
+*/test.py
+
+# Директории
+cardlink/
+venv/
+.venv/
+env/
+ENV/
