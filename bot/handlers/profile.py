@@ -8,6 +8,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.db.crud.bike import get_bike_by_id
+from bot.db.crud.debts import get_debts
 from bot.db.crud.equips import get_equips_user
 from bot.db.crud.mix_conn import get_user_and_data
 from bot.db.crud.names import get_personal_data, add_personal_data
@@ -49,7 +50,7 @@ async def profile(callback: CallbackQuery, state: FSMContext, bot: Bot):
             [InlineKeyboardButton(text="🗺️ Карта границ", callback_data="city_map")],
             [
                 InlineKeyboardButton(text="🛡️ Экипировка", callback_data="my_equips"),
-                InlineKeyboardButton(text="💰 Долги", callback_data="my_depts")
+                InlineKeyboardButton(text="💰 Долги", callback_data="my_debts")
             ],
             [InlineKeyboardButton(text="📊 История платежей", callback_data="history_my_payments")]
         ])
@@ -372,6 +373,207 @@ async def my_equips(callback: CallbackQuery):
         parse_mode='HTML',
         reply_markup=keyboard
     )
+
+
+@router.callback_query(F.data == 'my_debts')
+async def my_debts(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+    debts = await get_debts(tg_id)
+
+    # Форматируем текст с долгами
+    if debts:
+        debts_text = "📋 <b>Ваши долги:</b>\n\n"
+        total_debt = 0
+
+        for debt in debts:
+            tg_id, amount, description = debt[0], debt[1], debt[2]
+            debts_text += f"• {description}: <b>{amount} руб.</b>\n"
+            total_debt += amount
+
+        debts_text += f"\n💵 <b>Общая сумма долга: {total_debt} руб.</b>"
+    else:
+        debts_text = "✅ <b>У вас нет долгов</b>"
+
+    # Создаем клавиатуру
+    keyboard_buttons = []
+
+    if debts:
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="💳 Оплатить долги",
+                callback_data="pay_debts"
+            )
+        ])
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="↩️ Назад",
+            callback_data="main"
+        )
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    await callback.message.edit_text(
+        text=debts_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+class PayDebtStates(StatesGroup):
+    waiting_for_debt_choice = State()
+
+
+@router.callback_query(F.data == 'pay_debts')
+async def pay_debts_start(callback: CallbackQuery, state: FSMContext):
+    tg_id = callback.from_user.id
+    debts = await get_debts(tg_id)
+
+    if not debts:
+        await callback.answer("❌ У вас нет долгов для оплаты")
+        return
+
+    await state.set_state(PayDebtStates.waiting_for_debt_choice)
+    await state.update_data(debts=debts)
+
+    # Создаем кнопки для каждого долга
+    keyboard_buttons = []
+
+    for i, debt in enumerate(debts):
+        tg_id, amount, description = debt[0], debt[1], debt[2]
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"💳 {description} - {amount} руб.",
+                callback_data=f"select_debt_to_pay-{i}"  # Сохраняем индекс долга
+            )
+        ])
+
+    # Добавляем кнопку отмены
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="↩️ Назад к долгам",
+            callback_data="my_debts"
+        )
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    await callback.message.edit_text(
+        text="💳 <b>Выберите долг для оплаты:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'select_debt_to_pay')
+async def select_debt_to_pay(callback: CallbackQuery, state: FSMContext):
+    try:
+        data = await state.get_data()
+
+        # Проверяем, что данные существуют
+        if 'debts' not in data:
+            await callback.answer("❌ Сессия истекла. Начните заново.")
+            await state.clear()
+            return
+
+        debt_index = int(callback.data.split('-')[1])
+        debts = data['debts']
+
+        # Проверяем, что индекс в пределах диапазона
+        if debt_index >= len(debts):
+            await callback.answer("❌ Долг не найден")
+            return
+
+        selected_debt = debts[debt_index]
+        tg_id, amount, description = selected_debt[0], selected_debt[1], selected_debt[2]
+
+        # Здесь будет логика создания платежа
+        # Пока просто покажем подтверждение
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="💳 Оплатить",
+                        callback_data=f"debt_pay-{amount}-{description}"
+                    ),
+                    InlineKeyboardButton(
+                        text="↩️ Назад",
+                        callback_data="pay_debts"
+                    )
+                ]
+            ]
+        )
+
+        await callback.message.edit_text(
+            text=f"💳 <b>Оплата долга:</b>\n\n"
+                 f"📝 <b>Описание:</b> {description}\n"
+                 f"💵 <b>Сумма:</b> {amount} руб.\n\n"
+                 f"Нажмите кнопку ниже для оплаты",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в select_debt_to_pay: {e}")
+        await callback.answer("❌ Произошла ошибка")
+        await state.clear()
+
+
+# Обработчик для кнопки "Назад к моим долгам"
+@router.callback_query(F.data == 'my_debts')
+async def back_to_my_debts(callback: CallbackQuery, state: FSMContext):
+    # Очищаем состояние при возврате
+    await state.clear()
+
+    tg_id = callback.from_user.id
+    debts = await get_debts(tg_id)
+
+    if debts:
+        debts_text = "📋 <b>Ваши долги:</b>\n\n"
+        total_debt = 0
+
+        for debt in debts:
+            tg_id, amount, description = debt[0], debt[1], debt[2]
+            debts_text += f"• {description}: <b>{amount} руб.</b>\n"
+            total_debt += amount
+
+        debts_text += f"\n💵 <b>Общая сумма долга: {total_debt} руб.</b>"
+    else:
+        debts_text = "✅ <b>У вас нет долгов</b>"
+
+    keyboard_buttons = []
+
+    if debts:
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="💳 Оплатить долги",
+                callback_data="pay_debts"
+            )
+        ])
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="↩️ Назад",
+            callback_data="main"
+        )
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    await callback.message.edit_text(
+        text=debts_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'debt_pay')
+async def debt_pay(callback: CallbackQuery):
 
 
 
