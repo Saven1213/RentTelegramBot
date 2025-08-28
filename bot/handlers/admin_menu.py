@@ -1,5 +1,5 @@
 from gettext import textdomain
-
+import asyncio
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -10,7 +10,7 @@ from aiogram.filters.callback_data import CallbackData
 import json
 
 from bot.db.crud.bike import get_bike_by_id
-from bot.db.crud.debts import get_debts
+from bot.db.crud.debts import get_debts, add_debt, remove_debt
 from bot.db.crud.equips import save_equips
 from bot.db.crud.mix_conn import rent_bike
 from bot.db.crud.names import get_personal_data
@@ -689,6 +689,333 @@ async def debts_admin(callback: CallbackQuery):
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+
+
+class AddDebtStates(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_description = State()
+
+
+@router.callback_query(F.data.split('-')[0] == 'add_debt')
+async def add_debt_start(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    user_id = callback.data.split('-')[1]
+
+    await state.set_state(AddDebtStates.waiting_for_amount)
+    await state.update_data(
+        user_id=user_id,
+        bot_messages=[callback.message.message_id]  # Сохраняем message_id первого сообщения
+    )
+
+
+    sent_message = await callback.message.answer(
+        text="💸 <b>Добавление долга</b>\n\n"
+             "Введите сумму долга (только цифры):",
+        parse_mode="HTML"
+    )
+
+
+    data = await state.get_data()
+    bot_messages = data.get('bot_messages', [])
+    bot_messages.append(sent_message.message_id)
+    await state.update_data(bot_messages=bot_messages)
+
+    await callback.answer()
+
+
+@router.message(AddDebtStates.waiting_for_amount)
+async def process_debt_amount(message: Message, state: FSMContext, bot: Bot):
+
+    data = await state.get_data()
+    user_messages = data.get('user_messages', [])
+    user_messages.append(message.message_id)
+    await state.update_data(user_messages=user_messages)
+
+    try:
+        amount = int(message.text)
+        if amount <= 0:
+
+            sent_message = await message.answer("❌ Сумма должна быть положительным числом. Попробуйте снова:")
+            data = await state.get_data()
+            bot_messages = data.get('bot_messages', [])
+            bot_messages.append(sent_message.message_id)
+            await state.update_data(bot_messages=bot_messages)
+            return
+
+        await state.update_data(amount=amount)
+        await state.set_state(AddDebtStates.waiting_for_description)
+
+
+        sent_message = await message.answer(
+            "📝 Теперь введите описание долга:\n"
+            "Например: 'За повреждение скутера'"
+        )
+
+        data = await state.get_data()
+        bot_messages = data.get('bot_messages', [])
+        bot_messages.append(sent_message.message_id)
+        await state.update_data(bot_messages=bot_messages)
+
+    except ValueError:
+
+        sent_message = await message.answer("❌ Пожалуйста, введите корректную сумму (только цифры):")
+        data = await state.get_data()
+        bot_messages = data.get('bot_messages', [])
+        bot_messages.append(sent_message.message_id)
+        await state.update_data(bot_messages=bot_messages)
+
+
+@router.message(AddDebtStates.waiting_for_description)
+async def process_debt_description(message: Message, state: FSMContext, bot: Bot):
+
+    data = await state.get_data()
+    user_messages = data.get('user_messages', [])
+    user_messages.append(message.message_id)
+    await state.update_data(user_messages=user_messages)
+
+    description = message.text.strip()
+
+    if len(description) < 3:
+
+        sent_message = await message.answer("❌ Описание слишком короткое. Введите более подробное описание:")
+        data = await state.get_data()
+        bot_messages = data.get('bot_messages', [])
+        bot_messages.append(sent_message.message_id)
+        await state.update_data(bot_messages=bot_messages)
+        return
+
+    data = await state.get_data()
+    user_id = data['user_id']
+    amount = data['amount']
+    bot_messages = data.get('bot_messages', [])
+    user_messages = data.get('user_messages', [])
+
+
+    await add_debt(tg_id=user_id, amount=amount, description=description)
+
+
+    chat_id = message.chat.id
+
+
+    for msg_id in bot_messages:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception as e:
+            pass
+
+
+    for msg_id in user_messages:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception as e:
+            print(f"Ошибка удаления сообщения пользователя {msg_id}: {e}")
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="↩️ Вернуться к долгам",
+                    callback_data=f"debts-{user_id}"
+                )
+            ]
+        ]
+    )
+
+    pd = await get_personal_data(user_id)
+
+    await message.answer(
+        f"✅ <b>Долг добавлен!</b>\n\n"
+        f"👤 Клиент: {pd[2]} {pd[3]}\n"
+        f"💵 Сумма: {amount} руб.\n"
+        f"📝 Описание: {description}",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+class RemoveDebtStates(StatesGroup):
+    waiting_for_debt_choice = State()
+    waiting_for_confirmation = State()
+
+@router.callback_query(F.data.split('-')[0] == 'remove_debt')
+async def remove_debt_start(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.data.split('-')[1]
+    user_debts = await get_debts(user_id)
+
+    if not user_debts:
+        await callback.answer("❌ У пользователя нет долгов для удаления")
+        return
+
+    await state.set_state(RemoveDebtStates.waiting_for_debt_choice)
+    await state.update_data(user_id=user_id, debts=user_debts)
+
+    # Создаем кнопки для каждого долга
+    keyboard_buttons = []
+
+    for i, debt in enumerate(user_debts):
+        tg_id, amount, description = debt[0], debt[1], debt[2]
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"❌ {description} - {amount} руб.",
+                callback_data=f"select_debt-{i}"  # Сохраняем индекс долга
+            )
+        ])
+
+    # Добавляем кнопку отмены
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="↩️ Назад к долгам",
+            callback_data=f"debts-{user_id}"
+        )
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    await callback.message.edit_text(
+        text="🗑️ <b>Выберите долг для удаления:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+
+@router.callback_query(F.data == 'cancel_add_debt')
+async def cancel_add_debt(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    user_id = data.get('user_id')
+    bot_messages = data.get('bot_messages', [])
+    user_messages = data.get('user_messages', [])
+
+    chat_id = callback.message.chat.id
+
+
+    for msg_id in bot_messages:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception as e:
+            print(f"Ошибка удаления сообщения бота {msg_id}: {e}")
+
+
+    for msg_id in user_messages:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception as e:
+            print(f"Ошибка удаления сообщения пользователя {msg_id}: {e}")
+
+    await state.clear()
+
+    if user_id:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="↩️ Вернуться к долгам",
+                        callback_data=f"debts-{user_id}"
+                    )
+                ]
+            ]
+        )
+        await callback.message.answer("❌ Добавление долга отменено", reply_markup=keyboard)
+    else:
+        await callback.message.answer("❌ Добавление долга отменено")
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'select_debt')
+async def select_debt_for_removal(callback: CallbackQuery, state: FSMContext):
+    debt_index = int(callback.data.split('-')[1])
+    data = await state.get_data()
+    user_id = data['user_id']
+    debts = data['debts']
+
+    selected_debt = debts[debt_index]
+    tg_id, amount, description = selected_debt[0], selected_debt[1], selected_debt[2]
+
+    await state.update_data(selected_debt_index=debt_index)
+    await state.set_state(RemoveDebtStates.waiting_for_confirmation)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Да, удалить",
+                    callback_data="confirm_remove_debt"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Нет, отменить",
+                    callback_data=f"debts-{user_id}"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text=f"⚠️ <b>Подтвердите удаление долга:</b>\n\n"
+             f"📝 <b>Описание:</b> {description}\n"
+             f"💵 <b>Сумма:</b> {amount} руб.\n\n"
+             f"Вы уверены, что хотите удалить этот долг?",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'confirm_remove_debt')
+async def confirm_remove_debt(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    user_id = data['user_id']
+    debts = data['debts']
+    debt_index = data['selected_debt_index']
+
+    selected_debt = debts[debt_index]
+    tg_id, amount, description = selected_debt[0], selected_debt[1], selected_debt[2]
+
+    # Удаляем долг из базы
+    success = await remove_debt(tg_id, amount, description)
+
+    if success:
+        # Отправляем подтверждение
+        await callback.message.edit_text(
+            text=f"✅ <b>Долг удален!</b>\n\n"
+                 f"📝 <b>Описание:</b> {description}\n"
+                 f"💵 <b>Сумма:</b> {amount} руб.\n\n"
+                 f"Долг успешно удален из системы.",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            text="❌ <b>Ошибка при удалении долга</b>\n\n"
+                 "Не удалось удалить долг. Попробуйте снова.",
+            parse_mode="HTML"
+        )
+
+    # Возвращаемся к списку долгов через 2 секунды
+    await asyncio.sleep(2)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="↩️ Вернуться к долгам",
+                    callback_data=f"debts-{user_id}"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text="Выберите дальнейшее действие:",
+        reply_markup=keyboard
+    )
+
+    await state.clear()
+    await callback.answer()
+
+
+
+
+
+
 
 
 
