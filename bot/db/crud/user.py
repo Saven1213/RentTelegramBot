@@ -73,6 +73,60 @@ async def get_all_admins():
         return admins
 
 
+async def change_role(tg_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+
+        await cursor.execute("""
+        SELECT admin FROM users WHERE tg_id = ?
+        """, (tg_id,))
+
+        result = await cursor.fetchone()
+        if not result:
+            return
+
+        current_role = result[0]
+
+        if current_role == 'user':
+            new_role = 'admin'
+        elif current_role == 'admin':
+            new_role = 'user'
+        else:
+            return
+
+        await cursor.execute("""
+        UPDATE users SET admin = ? WHERE tg_id = ?
+        """, (new_role, tg_id))
+
+        await conn.commit()
+
+
+async def change_ban_status(tg_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+
+        await cursor.execute("""
+        SELECT ban FROM users WHERE tg_id = ?
+        """, (tg_id,))
+
+        result = await cursor.fetchone()
+        if not result:
+            return
+
+        current_ban_status = result[0]
+
+
+        new_ban_status = 1 if current_ban_status == 0 else 0
+
+        await cursor.execute("""
+        UPDATE users SET ban = ? WHERE tg_id = ?
+        """, (new_ban_status, tg_id))
+
+        await conn.commit()
+
+
+
+
 
 
 

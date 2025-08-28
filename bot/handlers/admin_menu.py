@@ -1,5 +1,7 @@
-from gettext import textdomain
+
 import asyncio
+from gettext import textdomain
+
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -11,7 +13,7 @@ import json
 
 from bot.db.crud.bike import get_bike_by_id
 from bot.db.crud.debts import get_debts, add_debt, remove_debt
-from bot.db.crud.equips import save_equips
+from bot.db.crud.equips import save_equips, get_equips_user
 from bot.db.crud.mix_conn import rent_bike
 from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
@@ -20,7 +22,7 @@ from bot.db.crud.payments.get_order import get_order
 from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent
-from bot.db.crud.user import get_user, get_all_users
+from bot.db.crud.user import get_user, get_all_users, change_role, change_ban_status
 
 router = Router()
 
@@ -189,12 +191,15 @@ async def view_users_admin(callback: CallbackQuery):
 async def view_select_user_admin(callback: CallbackQuery):
     data = callback.data.split('-')[1]
     user = await get_user(data)
+    pd = await get_personal_data(data)
+
+    full_name = f'{pd[2]} {pd[3]}'
     user_card = f"""
     <code>┌──────────────────────────────┐</code>
     <b>  👤 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ  </b>
     <code>├──────────────────────────────┤</code>
     <b>│</b> 🔹 ID: <code>#{user[0]}</code>
-    <b>│</b> 🔹 TG: @{user[2] or 'не указан'}
+    <b>│</b> 🔹 Имя: {full_name or 'не указан'}
     <b>│</b> 🔹 TG ID: <code>{user[1]}</code>
     <code>├──────────────────────────────┤</code>
     <b>│</b> 🏍 Текущий скутер: 
@@ -237,7 +242,7 @@ async def check_rent_history(callback: CallbackQuery):
     if rents:
         for rent in rents:
             # Определяем иконку статуса
-            status_icon = "🟢" if rent[5] == 'active' else "🔴"  # rent[5] - статус
+            status_icon = "🟢" if rent[6] == 'active' else "🔴"  # rent[5] - статус
 
             keyboard.inline_keyboard.append(
                 [
@@ -254,9 +259,13 @@ async def check_rent_history(callback: CallbackQuery):
             ]
         )
 
+        pd = await get_personal_data(data)
+
+        full_name = f'{pd[2]} {pd[3]}'
+
         await callback.message.edit_text(
             f"📋 <b>ИСТОРИЯ АРЕНД</b>\n"
-            f"👤 <i>Пользователь: @{user[2] or 'Неизвестный'}</i>\n\n"
+            f"👤 <i>Пользователь: {full_name or 'Неизвестный'}</i>\n\n"
             f"🏍️ <b>Список всех поездок:</b>\n"
             f"🟢 — активные\n"
             f"🔴 — завершенные/отмененные",
@@ -284,8 +293,8 @@ async def current_rent_user_admin(callback: CallbackQuery):
     data_rent = await get_current_rent(data)
 
 
-    start_time = datetime.fromisoformat(data_rent[3]).strftime('%d.%m.%Y %H:%M')
-    end_time = datetime.fromisoformat(data_rent[4]).strftime('%d.%m.%Y %H:%M') if data_rent[4] else "Не завершена"
+    start_time = datetime.fromisoformat(data_rent[4]).strftime('%d.%m.%Y %H:%M')
+    end_time = datetime.fromisoformat(data_rent[5]).strftime('%d.%m.%Y %H:%M') if data_rent[4] else "Не завершена"
 
 
     status_icons = {
@@ -294,15 +303,21 @@ async def current_rent_user_admin(callback: CallbackQuery):
         'cancelled': '❌ Отменена',
         'pending': '⏳ Ожидание'
     }
-    status = status_icons.get(data_rent[5], data_rent[5])
+    status = status_icons.get(data_rent[6], data_rent[6])
+
+    pd = await get_personal_data(data_rent[1])
+
+    full_name = f'{pd[2]} {pd[3]}'
+
+    bike = await get_bike_by_id(data_rent[2])
 
     rent_card = f"""
 <code>┌──────────────────────────────┐</code>
 <b>  📋 ДЕТАЛИ АРЕНДЫ #{data_rent[0]}  </b>
 <code>├──────────────────────────────┤</code>
+<b>│</b> 👤 Имя пользователя: <code>{full_name}</code>
 <b>│</b> 🆔 ID аренды: <code>#{data_rent[0]}</code>
-<b>│</b> 👤 ID пользователя: <code>{data_rent[1]}</code>
-<b>│</b> 🏍 ID скутера: <code>{data_rent[2]}</code>
+<b>│</b> 🏍 ID скутера: <code>{bike[2]} #{bike[1]}</code>
 <code>├──────────────────────────────┤</code>
 <b>│</b> 🕐 Начало: <b>{start_time}</b>
 <b>│</b> 🕔 Окончание: <b>{end_time}</b>
@@ -389,18 +404,17 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         reply_markup=get_items_keyboard(user_id, order_id, bike_id)
     )
 
-# -------------------------------
-# Хэндлер toggle-кнопок
+
 @router.callback_query(ItemToggleCallback.filter())
 async def toggle_item_callback(query: CallbackQuery, callback_data: ItemToggleCallback):
     user_id = query.from_user.id
     if user_id not in user_selections:
         user_selections[user_id] = {"шлем": False, "багажник": False, "цепь": False}
 
-    # переключаем состояние
+
     user_selections[user_id][callback_data.item] = not user_selections[user_id][callback_data.item]
 
-    # обновляем клавиатуру
+
     await query.message.edit_reply_markup(
         reply_markup=get_items_keyboard(user_id, callback_data.order_id, callback_data.bike_id)
     )
@@ -440,7 +454,7 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
                           InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]]
     )
     pledge = 2000
-    # сначала редактируем текущее сообщение
+
     try:
         await callback.message.edit_text(
             text=(
@@ -455,7 +469,7 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
     except Exception:
         pass
 
-    # потом удаляем остальные сообщения админов
+
     for role_name, role_dict in order_msgs.items():
         for chat_id, msg_id in role_dict.items():
             if role_name == 'admin' and int(chat_id) == user_id:
@@ -533,6 +547,9 @@ async def settings(callback: CallbackQuery, state: FSMContext):
         inline_keyboard=[
             [
                 InlineKeyboardButton(text='📍 Обновить карту', callback_data='change_map')
+            ],
+            [
+                InlineKeyboardButton(text='↩️ Назад в админ-панель', callback_data='admin_main')
             ]
         ]
     )
@@ -660,7 +677,7 @@ async def debts_admin(callback: CallbackQuery):
     else:
         debts_text = "✅ <b>Долгов нет</b>"
 
-    # Создаем клавиатуру
+
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -847,7 +864,7 @@ async def remove_debt_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(RemoveDebtStates.waiting_for_debt_choice)
     await state.update_data(user_id=user_id, debts=user_debts)
 
-    # Создаем кнопки для каждого долга
+
     keyboard_buttons = []
 
     for i, debt in enumerate(user_debts):
@@ -859,7 +876,7 @@ async def remove_debt_start(callback: CallbackQuery, state: FSMContext):
             )
         ])
 
-    # Добавляем кнопку отмены
+
     keyboard_buttons.append([
         InlineKeyboardButton(
             text="↩️ Назад к долгам",
@@ -989,7 +1006,7 @@ async def confirm_remove_debt(callback: CallbackQuery, state: FSMContext, bot: B
             parse_mode="HTML"
         )
 
-    # Возвращаемся к списку долгов через 2 секунды
+
     await asyncio.sleep(2)
 
     keyboard = InlineKeyboardMarkup(
@@ -1012,11 +1029,415 @@ async def confirm_remove_debt(callback: CallbackQuery, state: FSMContext, bot: B
     await callback.answer()
 
 
+@router.callback_query(F.data.split('-')[0] == 'equips')
+async def equipment_user(callback: CallbackQuery):
+    user_id = callback.data.split('-')[1]
+    equip_user = await get_equips_user(user_id)
+    pd = await get_personal_data(user_id)
+
+    # Форматируем имя
+    first_name = pd[2] or ""
+    last_name = pd[3] or ""
+    full_name = f"{first_name} {last_name}".strip()
+
+    # Собираем доступную экипировку
+    available_equips = []
+    if equip_user[2]:  # helmet
+        available_equips.append("🪖 Шлем")
+    if equip_user[3]:  # chain
+        available_equips.append("⛓️ Цепь")
+    if equip_user[4]:  # box
+        available_equips.append("🎒 Сумка/кофр")
+    if equip_user[5]:  # trunk
+        available_equips.append("🧳 Багажник")
+
+    # Формируем текст
+    if available_equips:
+        text = (
+            f"🛡️ <b>ЭКИПИРОВКА ПОЛЬЗОВАТЕЛЯ</b>\n\n"
+            f"👤 <b>Владелец:</b> {full_name or 'Не указано'}\n\n"
+            f"✅ <b>Доступная экипировка:</b>\n"
+            f"{chr(10).join(['▫️ ' + item for item in available_equips])}\n\n"
+        )
+    else:
+        text = (
+            f"🛡️ <b>ЭКИПИРОВКА ПОЛЬЗОВАТЕЛЯ</b>\n\n"
+            f"👤 <b>Владелец:</b> {full_name or 'Не указано'}\n\n"
+            f"🚫 <i>У пользователя нет доступной экипировки</i>\n\n"
+            f"💡 <i>Можно выдать через админ-панель</i>"
+        )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=f'view_user-{user_id}')]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text=text,
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
 
 
+@router.callback_query(F.data == 'toggle_admin')
+async def toggle_admin(callback: CallbackQuery):
+    try:
+        users = await get_all_users()
+
+        keyboard_buttons = []
+
+        for user in users:
+            if user[-1] == 'moderator':
+                continue
+
+            pd = await get_personal_data(user[1])
+            if pd and len(pd) >= 4:
+                full_name = f'{pd[2]} {pd[3]}'
+            else:
+                full_name = f'Пользователь #{user[1]}'
+
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"👤 {full_name}",
+                    callback_data=f'toggle_current_user-{user[1]}'
+                )
+            ])
+
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="↩️ Назад в админ-панель",
+                callback_data="admin_main"
+            )
+        ])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+        admin_text = """
+🎛️ <b>Управление администраторами</b>
+
+👥 <b>Список пользователей:</b>
+Выберите пользователя, чтобы назначить/снять права администратора.
+
+⚠️ <i>Модераторы не отображаются в этом списке</i>
+"""
+
+        await callback.message.edit_text(
+            text=admin_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в toggle_admin: {e}")
+        await callback.answer("❌ Произошла ошибка при загрузке пользователей")
 
 
+@router.callback_query(F.data.split('-')[0] == 'toggle_current_user')
+async def toggle_current_user_admin(callback: CallbackQuery):
+    try:
+        user_id = int(callback.data.split('-')[1])
 
+        user = await get_user(user_id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+
+        current_role = user[-1]
+
+        pd = await get_personal_data(user_id)
+        if pd and len(pd) >= 4:
+            full_name = f'{pd[2]} {pd[3]}'
+        else:
+            full_name = f'Пользователь #{user_id}'
+
+        if current_role == 'user':
+            button_text = "🔼 Сделать администратором"
+            new_role = 'admin'
+            action_text = "назначить администратором"
+        else:
+            button_text = "🔽 Снять права администратора"
+            new_role = 'user'
+            action_text = "снять права администратора"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"confirm_toggle-{user_id}-{new_role}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="↩️ Назад к списку",
+                    callback_data="toggle_admin"
+                )
+            ]
+        ])
+
+        role_icons = {
+            'user': '👤 Обычный пользователь',
+            'admin': '🛡️ Администратор',
+            'moderator': '🎛️ Модератор'
+        }
+        current_role_text = role_icons.get(current_role, current_role)
+
+        confirm_text = f"""
+🎛️ <b>Изменение прав пользователя</b>
+
+👤 <b>Пользователь:</b> {full_name}
+📊 <b>Текущая роль:</b> {current_role_text}
+
+⚠️ <b>Вы уверены, что хотите {action_text}?</b>
+"""
+
+        await callback.message.edit_text(
+            text=confirm_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в toggle_current_user: {e}")
+        await callback.answer("❌ Произошла ошибка")
+
+
+@router.callback_query(F.data.split('-')[0] == 'confirm_toggle')
+async def confirm_toggle_admin(callback: CallbackQuery):
+    try:
+        data_parts = callback.data.split('-')
+        user_id = int(data_parts[1])
+        new_role = data_parts[2]
+
+        await change_role(user_id)
+
+        user = await get_user(user_id)
+        pd = await get_personal_data(user_id)
+
+        if pd and len(pd) >= 4:
+            full_name = f'{pd[2]} {pd[3]}'
+        else:
+            full_name = f'Пользователь #{user_id}'
+
+        role_icons = {
+            'user': '👤 Обычный пользователь',
+            'admin': '🛡️ Администратор',
+            'moderator': '🎛️ Модератор'
+        }
+        new_role_text = role_icons.get(new_role, new_role)
+
+        result_text = f"""
+✅ <b>Права пользователя изменены!</b>
+
+👤 <b>Пользователь:</b> {full_name}
+🎛️ <b>Новая роль:</b> {new_role_text}
+
+💡 Изменения применены успешно.
+"""
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="↩️ Вернуться к списку",
+                    callback_data="toggle_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 В главное меню",
+                    callback_data="main"
+                )
+            ]
+        ])
+
+        await callback.message.edit_text(
+            text=result_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в confirm_toggle: {e}")
+        await callback.answer("❌ Произошла ошибка при изменении прав")
+
+
+@router.callback_query(F.data == 'toggle_ban')
+async def toggle_ban(callback: CallbackQuery):
+    try:
+        users = await get_all_users()
+
+        keyboard_buttons = []
+
+        for user in users:
+            if user[-1] == 'moderator':
+                continue
+            pd = await get_personal_data(user[1])
+            if pd and len(pd) >= 4:
+                full_name = f'{pd[2]} {pd[3]}'
+            else:
+                full_name = f'Пользователь #{user[1]}'
+
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"👤 {full_name}",
+                    callback_data=f'toggle_ban_user-{user[1]}'
+                )
+            ])
+
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="↩️ Назад в админ-панель",
+                callback_data="admin_main"
+            )
+        ])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+        ban_text = """
+🚫 <b>Управление блокировками</b>
+
+👥 <b>Список пользователей:</b>
+Выберите пользователя, чтобы заблокировать/разблокировать.
+"""
+
+        await callback.message.edit_text(
+            text=ban_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в toggle_ban: {e}")
+        await callback.answer("❌ Произошла ошибка при загрузке пользователей")
+
+
+@router.callback_query(F.data.split('-')[0] == 'toggle_ban_user')
+async def toggle_ban_user(callback: CallbackQuery):
+    try:
+        user_id = int(callback.data.split('-')[1])
+
+        user = await get_user(user_id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+
+        current_ban_status = user[-2]  # 1 или 0
+
+        pd = await get_personal_data(user_id)
+        if pd and len(pd) >= 4:
+            full_name = f'{pd[2]} {pd[3]}'
+        else:
+            full_name = f'Пользователь #{user_id}'
+
+        if current_ban_status == 0:  # Не забанен
+            button_text = "🔒 Заблокировать"
+            new_ban_status = 1
+            action_text = "заблокировать"
+            current_status_text = "✅ Активный"
+        else:  # Забанен
+            button_text = "🔓 Разблокировать"
+            new_ban_status = 0
+            action_text = "разблокировать"
+            current_status_text = "🔒 Заблокирован"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"confirm_ban-{user_id}-{new_ban_status}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="↩️ Назад в админ-панель",
+                    callback_data="admin_main"
+                )
+            ]
+        ])
+
+        confirm_text = f"""
+🚫 <b>Изменение статуса блокировки</b>
+
+👤 <b>Пользователь:</b> {full_name}
+📊 <b>Текущий статус:</b> {current_status_text}
+
+⚠️ <b>Вы уверены, что хотите {action_text} пользователя?</b>
+"""
+
+        await callback.message.edit_text(
+            text=confirm_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в toggle_ban_user: {e}")
+        await callback.answer("❌ Произошла ошибка")
+
+
+@router.callback_query(F.data.split('-')[0] == 'confirm_ban')
+async def confirm_ban_user(callback: CallbackQuery):
+    try:
+        data_parts = callback.data.split('-')
+        user_id = int(data_parts[1])
+        new_ban_status = int(data_parts[2])
+
+        await change_ban_status(user_id)
+
+        user = await get_user(user_id)
+        pd = await get_personal_data(user_id)
+
+        if pd and len(pd) >= 4:
+            full_name = f'{pd[2]} {pd[3]}'
+        else:
+            full_name = f'Пользователь #{user_id}'
+
+        if new_ban_status == 1:
+            new_status_text = "🔒 Заблокирован"
+            action_result = "заблокирован"
+        else:
+            new_status_text = "✅ Активный"
+            action_result = "разблокирован"
+
+        result_text = f"""
+✅ <b>Статус блокировки изменен!</b>
+
+👤 <b>Пользователь:</b> {full_name}
+🚫 <b>Новый статус:</b> {new_status_text}
+
+💡 Пользователь успешно {action_result}.
+"""
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="↩️ Вернуться к списку",
+                    callback_data="toggle_ban"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 В главное меню",
+                    callback_data="main"
+                )
+            ]
+        ])
+
+        await callback.message.edit_text(
+            text=result_text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка в confirm_ban: {e}")
+        await callback.answer("❌ Произошла ошибка при изменении статуса блокировки")
 
 
 

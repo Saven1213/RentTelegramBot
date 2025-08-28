@@ -13,7 +13,7 @@ from middlewares.ban_middleware import BanMiddleware
 
 from bot.scheduler import check_rent_status, deactivate_expired_rents, delete_old_history, check_payments_job, \
     check_payments_debts_job
-from config import TOKEN
+from bot.config import TOKEN
 from inc_routers import main_router
 
 scheduler = AsyncIOScheduler(timezone='Europe/Moscow')
@@ -49,6 +49,8 @@ async def main():
         if scheduler.running:
             scheduler.shutdown()
         await asyncio.sleep(0.1)
+
+
 
 
 
