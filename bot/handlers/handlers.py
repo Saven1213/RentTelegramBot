@@ -60,7 +60,7 @@ async def start_command(message: Message, state: FSMContext):
                             InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                         ],
                         [
-                            InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                            InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                             InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                         ]
                     ])
@@ -71,7 +71,7 @@ async def start_command(message: Message, state: FSMContext):
                             InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                         ],
                         [
-                            InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                            InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                             InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                         ],
                         [
@@ -84,12 +84,8 @@ async def start_command(message: Message, state: FSMContext):
                             InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                         ],
                         [
-                            InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                            InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                             InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
-                        ],
-                        [
-                            InlineKeyboardButton(text='тест', callback_data='extend'),
-                            InlineKeyboardButton(text='позже', callback_data='pay_later-none')
                         ]
                     ])
 
@@ -102,7 +98,7 @@ async def start_command(message: Message, state: FSMContext):
                     InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                 ],
                 [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                     InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                 ]
             ])
@@ -161,7 +157,7 @@ async def main(callback: CallbackQuery):
 
     user = await get_user(tg_id)
 
-    # print(user, ' вернулся в меню')
+
 
     tg_id = callback.from_user.id
     username = callback.from_user.username
@@ -180,7 +176,7 @@ async def main(callback: CallbackQuery):
                     InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                 ],
                 [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                     InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                 ],
                 [
@@ -196,7 +192,7 @@ async def main(callback: CallbackQuery):
                     InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                 ],
                 [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                     InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                 ]
             ])
@@ -208,7 +204,7 @@ async def main(callback: CallbackQuery):
                     InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                 ],
                 [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                     InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                 ],
                 [
@@ -222,7 +218,7 @@ async def main(callback: CallbackQuery):
                     InlineKeyboardButton(text='👤 Личный кабинет', callback_data='profile')
                 ],
                 [
-                    InlineKeyboardButton(text='❓ Помощь', url='http://t.me/'),
+                    InlineKeyboardButton(text='❓ Поддержка', callback_data='support'),
                     InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')
                 ]
             ])
@@ -306,7 +302,7 @@ async def main(callback: CallbackQuery):
 @router.callback_query(F.data == 'contacts')
 async def contacts(callback: CallbackQuery):
     text = (
-        "📞 <b>КОНТАКТЫ HULK BIKE</b> 🟢\n\n"
+        "📞 <b>КОНТАКТЫ ХАЛК БАЙК</b> 🟢\n\n"
         "<blockquote>"
         "<code>"
         "👨‍🔧 Мастер/Техподдержка:\n"

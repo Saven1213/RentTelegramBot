@@ -107,7 +107,7 @@ class Dept(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     tg_id: Mapped[int] = mapped_column(Integer)
     amount: Mapped[int] = mapped_column(Integer)
-    description: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(String(30))
 
 class Equip(Base):
     __tablename__ = 'equips'

@@ -10,8 +10,10 @@ from aiogram.filters.callback_data import CallbackData
 import json
 
 from bot.db.crud.bike import get_bike_by_id
+from bot.db.crud.debts import get_debts
 from bot.db.crud.equips import save_equips
 from bot.db.crud.mix_conn import rent_bike
+from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
@@ -130,9 +132,10 @@ async def view_users_admin(callback: CallbackQuery):
 
     # Добавляем кнопки пользователей
     for user in page_users:
+        pd = await get_personal_data(user[1])
         builder.row(
             InlineKeyboardButton(
-                text=f"👤 @{user[2]}",
+                text=f"👤 {pd[2]} {pd[3]}",
                 callback_data=f'view_user-{user[1]}'
             )
         )
@@ -636,6 +639,58 @@ async def update_map(message: Message, state: FSMContext, bot: Bot):
     )
 
     await state.clear()
+
+
+@router.callback_query(F.data.split('-')[0] == 'debts')
+async def debts_admin(callback: CallbackQuery):
+    user_id = callback.data.split('-')[1]
+    user_debts = await get_debts(user_id)
+
+
+    if user_debts:
+        debts_text = "📋 <b>Список долгов:</b>\n\n"
+        total_debt = 0
+
+        for debt in user_debts:
+            tg_id, amount, description = debt
+            debts_text += f"• {description}: <b>{amount} руб.</b>\n"
+            total_debt += amount
+
+        debts_text += f"\n💵 <b>Общая сумма долга: {total_debt} руб.</b>"
+    else:
+        debts_text = "✅ <b>Долгов нет</b>"
+
+    # Создаем клавиатуру
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Добавить долг",
+                    callback_data=f"add_debt-{user_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➖ Снять долг",
+                    callback_data=f"remove_debt-{user_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="↩️ Назад к пользователю",
+                    callback_data=f"view_user-{user_id}"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text=debts_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
 
 
 

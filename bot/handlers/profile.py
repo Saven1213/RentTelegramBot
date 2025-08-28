@@ -46,7 +46,6 @@ async def profile(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
         keyboard_rows.extend([
             [InlineKeyboardButton(text="🏍️ Мой скутер", callback_data="my_scooter")],
-            [InlineKeyboardButton(text="📄 Документы на байк", callback_data="documents")],
             [InlineKeyboardButton(text="🗺️ Карта границ", callback_data="city_map")],
             [
                 InlineKeyboardButton(text="🛡️ Экипировка", callback_data="my_equips"),
@@ -314,7 +313,7 @@ async def my_scooter(callback: CallbackQuery, state: FSMContext):
         last_oil_change = f'{bike[4]}  км' or "не указана"
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='📄 Документы', callback_data='documents')],
+            [InlineKeyboardButton(text='📄 Документы на байк', callback_data='documents')],
             [InlineKeyboardButton(text='◀️ Назад', callback_data='profile')]
         ])
 
@@ -323,7 +322,7 @@ async def my_scooter(callback: CallbackQuery, state: FSMContext):
             f'<code>┌────────────────────────┐</code>\n'
             f'<b>│</b> 🏍 <b>Модель:</b> {bike[2]}\n'
             f'<b>│</b> 🔧 <b>Замена масла:</b> {last_oil_change}\n'
-            f'<b>│</b> ⏰ <b>Следующая замена:</b> {next_oil_change[0], next_oil_change[1]}\n'
+            f'<b>│</b> ⏰ <b>Следующая замена:</b> {next_oil_change}\n'
             f'<code>└────────────────────────┛</code>\n\n'
             f'💡 <i>Управляйте вашей арендой</i>',
             parse_mode='HTML',
