@@ -1,7 +1,9 @@
 import re
-from gettext import textdomain
+
 import uuid
-from idlelib.editor import keynames
+from datetime import datetime
+
+from typing import Union
 
 from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -16,6 +18,7 @@ from bot.db.crud.mix_conn import get_user_and_data
 from bot.db.crud.names import get_personal_data, add_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.create_payment import create_payment
+from bot.db.crud.payments.payments_user import get_user_payments, get_payment_by_id
 from bot.db.crud.photos.map import get_map
 from bot.db.crud.user import get_user
 from cardlink._types import Bill, BillStatus
@@ -631,6 +634,230 @@ async def debt_pay(callback: CallbackQuery):
         description=description_for_func,
         status='pending_debt'
     )
+
+
+@router.callback_query(F.data == 'history_my_payments')
+async def history_my_payments(callback: CallbackQuery, state: FSMContext):
+    try:
+        user_id = callback.from_user.id
+
+        payments = await get_user_payments(user_id)
+
+        if not payments:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="↩️ Назад в профиль", callback_data="profile")]
+            ])
+
+            await callback.message.edit_text(
+                text="📭 <b>У вас пока нет платежей</b>",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            return
+
+        await state.update_data(payments=payments, current_page=0)
+        await show_payments_page(callback, state)
+
+    except Exception as e:
+        print(f"Ошибка в history_my_payments: {e}")
+        await callback.answer("❌ Ошибка при загрузке платежей")
+
+
+async def show_payments_page(update: Union[Message, CallbackQuery], state: FSMContext):
+    data = await state.get_data()
+    payments = data.get('payments', [])
+    current_page = data.get('current_page', 0)
+
+    start_idx = current_page * 5
+    end_idx = start_idx + 5
+    current_payments = payments[start_idx:end_idx]
+
+    keyboard_buttons = []
+
+    for i, payment in enumerate(current_payments, start=start_idx + 1):
+        description = payment[3]
+
+        if description and description.startswith('Аренда скутера'):
+            button_text = f"🏍️ Аренда #{i}"
+        elif description and description.startswith('Долг_'):
+            button_text = f"💰 Долг #{i}"
+        else:
+            button_text = f"💳 Платеж #{i}"
+
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"view_payment-{payment[0]}"
+            )
+        ])
+
+    total_pages = (len(payments) + 4) // 5
+    if total_pages > 1:
+        nav_buttons = []
+        if current_page > 0:
+            nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data="payments_prev"))
+
+        nav_buttons.append(InlineKeyboardButton(
+            text=f"Страница {current_page + 1}/{total_pages}",
+            callback_data="payments_page"
+        ))
+
+        if current_page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data="payments_next"))
+
+        keyboard_buttons.append(nav_buttons)
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="📊 Статистика", callback_data="payments_stats")
+    ])
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="↩️ В профиль", callback_data="profile")
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    text = "💳 <b>ВАШИ ПЛАТЕЖИ</b>\n\nВыберите платеж для просмотра подробной информации:"
+
+    if isinstance(update, CallbackQuery):
+        await update.message.edit_text(text=text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await update.answer(text=text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == 'payments_prev')
+async def payments_previous(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    if current_page > 0:
+        await state.update_data(current_page=current_page - 1)
+        await show_payments_page(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'payments_next')
+async def payments_next(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    payments = data.get('payments', [])
+    current_page = data.get('current_page', 0)
+    total_pages = (len(payments) + 4) // 5
+    if current_page < total_pages - 1:
+        await state.update_data(current_page=current_page + 1)
+        await show_payments_page(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'view_payment')
+async def view_payment_detail(callback: CallbackQuery):
+    payment_id = int(callback.data.split('-')[1])
+
+    payment = await get_payment_by_id(payment_id)
+    if not payment:
+        await callback.answer("❌ Платеж не найден")
+        return
+
+    (id, user_id, order_id, bill_id, amount, currency, commission,
+     status, created_at, updated_at, description, message_id, days, pledge) = payment
+
+    created_str = datetime.fromisoformat(created_at).strftime('%d.%m.%Y %H:%M')
+    updated_str = datetime.fromisoformat(updated_at).strftime('%d.%m.%Y %H:%M') if updated_at else "Не обновлялся"
+
+    if description and description.startswith('Аренда скутера'):
+        payment_type = "🏍️ Аренда скутера"
+    elif description and description.startswith('Долг_'):
+        payment_type = "💰 Погашение долга"
+        description = description.replace('_', ': ')
+    else:
+        payment_type = "💳 Платеж"
+
+    status_icons = {
+        'success': '✅ Успешно',
+        'pending': '⏳ В обработке',
+        'pending_debt': '⏳ В обработке',
+        'fail': '❌ Ошибка',
+        'expired': '⌛️ Истек'
+    }
+    status_text = status_icons.get(status, status)
+
+    payment_text = f"""
+{payment_type}
+
+💰 <b>Сумма:</b> {int(amount)} {currency}
+📝 <b>Описание:</b> {description}
+📊 <b>Статус:</b> {status_text}
+🕐 <b>Создан:</b> {created_str}
+
+🔢 <b>Детали:</b>
+• ID: <code>{id}</code>
+• Order ID: <code>{order_id}</code>
+• Комиссия: {commission} {currency}
+"""
+
+    if days and pledge:
+        payment_text += f"• Дней аренды: {days}\n• Залог: {pledge} {currency}\n"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ Назад к списку", callback_data="history_my_payments")],
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
+    ])
+
+    await callback.message.edit_text(
+        text=payment_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'payments_stats')
+async def payments_stats(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    payments = await get_user_payments(user_id)
+
+    if not payments:
+        await callback.answer("📭 Нет платежей для статистики")
+        return
+
+    total_spent = 0
+    successful = 0
+    pending = 0
+    failed = 0
+    expired = 0
+
+    for payment in payments:
+        amount, status = payment[4], payment[7]
+        if status == 'success':
+            total_spent += amount
+            successful += 1
+        elif status in ['pending', 'pending_debt']:
+            pending += 1
+        elif status == 'fail':
+            failed += 1
+        elif status == 'expired':
+            expired += 1
+
+    stats_text = f"""
+📊 <b>СТАТИСТИКА ПЛАТЕЖЕЙ</b>
+
+💵 <b>Всего потрачено:</b> {total_spent} RUB
+📈 <b>Успешных платежей:</b> {successful}
+⏳ <b>В обработке:</b> {pending}
+❌ <b>Неудачных:</b> {failed}
+⌛️ <b>Истекших:</b> {expired}
+📋 <b>Всего transactions:</b> {len(payments)}
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ Назад к платежам", callback_data="history_my_payments")],
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
+    ])
+
+    await callback.message.edit_text(
+        text=stats_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
 
 
 
