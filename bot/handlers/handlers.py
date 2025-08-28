@@ -152,7 +152,9 @@ async def start_command(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data == 'main')
-async def main(callback: CallbackQuery):
+async def main(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+
     tg_id = callback.from_user.id
 
     user = await get_user(tg_id)

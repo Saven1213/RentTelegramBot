@@ -46,3 +46,16 @@ async def get_current_rent(id_):
         data = await cursor.fetchone()
 
         return data
+
+async def get_user_by_rent_id(rent_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT user_id
+        FROM {t}
+        WHERE id = ?
+        """, (rent_id, ))
+
+        data = await cursor.fetchone()
+
+        return data[0]

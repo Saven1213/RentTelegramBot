@@ -591,7 +591,9 @@ async def debt_pay(callback: CallbackQuery):
     amount = callback.data.split('-')[1]
     description = callback.data.split('-')[2]
 
-    description = 'Долг: ' + description
+    description_for_msg = 'Долг: ' + description
+    description_for_func = 'Долг_' + description
+
 
     order_id = f'order-{uuid.uuid4().hex[:8]}-debt-{tg_id}'
     create_bill: Bill = await cl.create_bill(amount=int(amount), order_id=order_id, ttl=60 * 15)
@@ -608,7 +610,7 @@ async def debt_pay(callback: CallbackQuery):
             f"<code>┌────────────────────┐</code>\n"
             f"<b>  💰 ОПЛАТА ДОЛГА  </b>\n"
             f"<code>├────────────────────┤</code>\n"
-            f"<b>│</b> 📋 {description}\n"
+            f"<b>│</b> 📋 {description_for_msg}\n"
             f"<b>│</b> 💵 Сумма: {amount} ₽\n"
             f"<code>├────────────────────┤</code>\n"
             f"<b>│</b> ⏰ 15 минут\n"
@@ -626,7 +628,7 @@ async def debt_pay(callback: CallbackQuery):
         time=0,
         price=int(amount),
         message_id=msg.message_id,
-        description=description,
+        description=description_for_func,
         status='pending_debt'
     )
 

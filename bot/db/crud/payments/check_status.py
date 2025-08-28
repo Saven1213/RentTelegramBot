@@ -74,7 +74,7 @@ async def check_payments(bot: Bot) -> None:
                 ]
             )
 
-            if bill.status is not None and bill.active is False:
+            if bill.status != BillStatus.success and bill.active is False:
                 await cursor.execute(f'''
                     UPDATE {t}
                     SET status = 'expired',
@@ -242,7 +242,7 @@ async def check_payment_debts(bot: Bot):
 
             bill: Bill = await cl.get_bill_status(id=bill_id)
 
-            if bill.active is False:
+            if bill.active is False and bill.status != BillStatus.success:
                 await cursor.execute(f"""
                 UPDATE {t}
                 SET status = 'expired'
@@ -274,6 +274,7 @@ async def check_payment_debts(bot: Bot):
                 await bot.send_message(chat_id=user_id, text=text, parse_mode='HTML', reply_markup=keyboard)
 
             if bill.status == BillStatus.success:
+
                 await cursor.execute(f"""
                 UPDATE {t}
                 SET status = 'success'
@@ -293,14 +294,23 @@ async def check_payment_debts(bot: Bot):
                 except Exception:
                     pass
 
+                description_for_msg = description.replace('_', ': ')
+
                 text = (
                     "✅ <b>ПЛАТЕЖ УСПЕШНО ОПЛАЧЕН!</b>\n\n"
                     "💰 <i>Счет успешно обработан</i>\n\n"
                     "🎉 <b>Долг погашен</b>\n"
                     f"▫️ Сумма: <b>{amount} ₽</b>\n"
-                    f"▫️ Описание: {description}\n\n"
+                    f"▫️ Описание: {description_for_msg}\n\n"
                     "💚 <i>Спасибо за оплату!</i>"
                 )
+
+                await cursor.execute("""
+                DELETE FROM debts
+                WHERE description = ?
+                """, (description.split('_')[1], ))
+
+                await conn.commit()
 
                 await bot.send_message(chat_id=user_id, text=text, parse_mode='HTML', reply_markup=keyboard)
 

@@ -1,7 +1,7 @@
 
 import asyncio
 import aiosqlite
-
+from typing import Union
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -21,7 +21,7 @@ from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
 from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
-from bot.db.crud.rent_data import get_data_rents, get_current_rent
+from bot.db.crud.rent_data import get_data_rents, get_current_rent, get_user_by_rent_id
 from bot.db.crud.user import get_user, get_all_users, change_role, change_ban_status
 
 router = Router()
@@ -1443,12 +1443,9 @@ async def confirm_ban_user(callback: CallbackQuery):
 @router.callback_query(F.data == 'active_rents')
 async def active_rents_admin(callback: CallbackQuery, state: FSMContext):
     try:
-
         async with aiosqlite.connect('rent-bike.db') as conn:
             cursor = await conn.cursor()
-            await cursor.execute("""
-            SELECT * FROM rent_details WHERE status = 'active'
-            """)
+            await cursor.execute("SELECT * FROM rent_details WHERE status = 'active'")
             active_rents = await cursor.fetchall()
 
         if not active_rents:
@@ -1462,46 +1459,156 @@ async def active_rents_admin(callback: CallbackQuery, state: FSMContext):
             )
             return
 
-
         await state.update_data(active_rents=active_rents, current_page=0)
-        await show_rent_page(callback, state)
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Поиск по имени", callback_data="search_rents")],
+            [InlineKeyboardButton(text="📋 Список всех аренд", callback_data="show_all_rents")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="admin_main")]
+        ])
+
+        await callback.message.edit_text(
+            text="🏍 <b>Активные аренды</b>\n\nВыберите действие:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
 
     except Exception as e:
         print(f"Ошибка в active_rents_admin: {e}")
         await callback.answer("❌ Ошибка при загрузке аренд")
 
 
-async def show_rent_page(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == 'show_all_rents')
+async def show_all_rents(callback: CallbackQuery, state: FSMContext):
+    async with aiosqlite.connect('rent-bike.db') as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("SELECT * FROM rent_details WHERE status = 'active'")
+        all_rents = await cursor.fetchall()
+
+    await state.update_data(
+        active_rents=all_rents,
+        current_page=0,
+        search_query=None,
+        is_search=False,
+        all_rents=all_rents
+    )
+    await show_rent_page(callback, state)
+
+
+@router.callback_query(F.data == 'search_rents')
+async def search_rents_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SearchRentStates.waiting_for_name)
+
     data = await state.get_data()
-    active_rents = data['active_rents']
-    current_page = data['current_page']
+    if 'all_rents' not in data:
+        async with aiosqlite.connect('rent-bike.db') as conn:
+            cursor = await conn.cursor()
+            await cursor.execute("SELECT * FROM rent_details WHERE status = 'active'")
+            all_rents = await cursor.fetchall()
+        await state.update_data(all_rents=all_rents)
+
+    await callback.message.edit_text(
+        text="🔍 <b>Поиск аренд по имени</b>\n\nВведите имя или фамилию арендатора:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+class SearchRentStates(StatesGroup):
+    waiting_for_name = State()
+
+
+@router.message(SearchRentStates.waiting_for_name)
+async def process_search_name(message: Message, state: FSMContext):
+    search_query = message.text.strip().lower()
+
+    data = await state.get_data()
+    all_rents = data.get('all_rents', [])
+
+    found_rents = []
+
+    for rent in all_rents:
+        user_id = rent[1]
+        pd = await get_personal_data(user_id)
+
+        if pd and len(pd) >= 4:
+            first_name = pd[2].lower() if pd[2] else ""
+            last_name = pd[3].lower() if pd[3] else ""
+            full_name = f"{first_name} {last_name}"
+
+            if (search_query in first_name or
+                    search_query in last_name or
+                    search_query in full_name or
+                    first_name in search_query or
+                    last_name in search_query):
+                found_rents.append(rent)
+
+    if found_rents:
+        await state.update_data(
+            active_rents=found_rents,
+            current_page=0,
+            search_query=search_query,
+            is_search=True
+        )
+        await show_rent_page(message, state)
+    else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Попробовать снова", callback_data="search_rents")],
+            [InlineKeyboardButton(text="↩️ Назад", callback_data="active_rents")]
+        ])
+
+        await message.answer(
+            text=f"❌ <b>Аренды не найдены</b>\n\nПо запросу \"{message.text}\" активных аренд не найдено.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    await state.set_state(None)
+
+
+async def show_rent_page(update: Union[Message, CallbackQuery], state: FSMContext):
+    data = await state.get_data()
+    active_rents = data.get('active_rents', [])
+    current_page = data.get('current_page', 0)
+    search_query = data.get('search_query')
+    is_search = data.get('is_search', False)
+
+    if not active_rents:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ В админку", callback_data="admin_main")]
+        ])
+
+        if isinstance(update, CallbackQuery):
+            await update.message.edit_text(
+                text="📭 <b>Аренды не найдены</b>",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            await update.answer(
+                text="📭 <b>Аренды не найдены</b>",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        return
 
     rent = active_rents[current_page]
     rent_id, user_id, bike_id, notified, start_time, end_time, status, days, pledge = rent
 
-
     pd = await get_personal_data(user_id)
-    if pd and len(pd) >= 4:
-        user_name = f"{pd[2]} {pd[3]}"
-    else:
-        user_name = f"Пользователь #{user_id}"
-
+    user_name = f"{pd[2]} {pd[3]}" if pd and len(pd) >= 4 else f"Пользователь #{user_id}"
 
     bike = await get_bike_by_id(bike_id)
-    if bike:
-        bike_name = bike[2]
-        display_bike_id = bike[1]
-    else:
-        bike_name = "Неизвестный байк"
-        display_bike_id = bike_id
-
+    bike_name = bike[2] if bike else "Неизвестный байк"
+    display_bike_id = bike[1] if bike else bike_id
 
     start_str = datetime.fromisoformat(start_time).strftime('%d.%m.%Y %H:%M')
     end_str = datetime.fromisoformat(end_time).strftime('%d.%m.%Y %H:%M') if end_time else "Не указано"
 
+    search_info = f"🔍 Поиск: \"{search_query}\"\n\n" if is_search and search_query else ""
 
     rent_card = f"""
-🏍 <b>АКТИВНАЯ АРЕНДА #{rent_id}</b>
+{search_info}🏍 <b>АКТИВНАЯ АРЕНДА #{rent_id}</b>
 
 👤 <b>Арендатор:</b> {user_name}
 📞 <b>ID пользователя:</b> <code>{user_id}</code>
@@ -1517,14 +1624,12 @@ async def show_rent_page(callback: CallbackQuery, state: FSMContext):
 📊 <b>Статус:</b> 🟢 Активна
 """
 
-
     keyboard_buttons = []
-
 
     if len(active_rents) > 1:
         nav_buttons = []
         if current_page > 0:
-            nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="rent_prev"))
+            nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data="rent_prev"))
 
         nav_buttons.append(InlineKeyboardButton(
             text=f"{current_page + 1}/{len(active_rents)}",
@@ -1532,11 +1637,11 @@ async def show_rent_page(callback: CallbackQuery, state: FSMContext):
         ))
 
         if current_page < len(active_rents) - 1:
-            nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data="rent_next"))
+            nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data="rent_next"))
 
         keyboard_buttons.append(nav_buttons)
 
-
+    # ДОБАВЛЯЕМ КНОПКУ УПРАВЛЕНИЯ АРЕНДОЙ
     keyboard_buttons.append([
         InlineKeyboardButton(
             text="⚙️ Управление арендой",
@@ -1544,24 +1649,27 @@ async def show_rent_page(callback: CallbackQuery, state: FSMContext):
         )
     ])
 
+    nav_buttons = []
+    if is_search:
+        nav_buttons.append(InlineKeyboardButton(text="🔍 Новый поиск", callback_data="search_rents"))
+    keyboard_buttons.append(nav_buttons)
 
     keyboard_buttons.append([
-        InlineKeyboardButton(text="↩️ Назад в админку", callback_data="admin_main")
+        InlineKeyboardButton(text="↩️ В админку", callback_data="admin_main")
     ])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
-    await callback.message.edit_text(
-        text=rent_card,
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    if isinstance(update, CallbackQuery):
+        await update.message.edit_text(text=rent_card, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await update.answer(text=rent_card, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data == 'rent_prev')
 async def rent_previous(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    current_page = data['current_page']
+    current_page = data.get('current_page', 0)
     if current_page > 0:
         await state.update_data(current_page=current_page - 1)
         await show_rent_page(callback, state)
@@ -1571,27 +1679,26 @@ async def rent_previous(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == 'rent_next')
 async def rent_next(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    active_rents = data['active_rents']
-    current_page = data['current_page']
+    active_rents = data.get('active_rents', [])
+    current_page = data.get('current_page', 0)
     if current_page < len(active_rents) - 1:
         await state.update_data(current_page=current_page + 1)
         await show_rent_page(callback, state)
     await callback.answer()
 
 
-@router.callback_query(F.data == 'rent_page')
-async def rent_page_info(callback: CallbackQuery):
-    await callback.answer("📄 Просмотр активных аренд")
-
-
+# ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ УПРАВЛЕНИЯ АРЕНДОЙ
 @router.callback_query(F.data.split('-')[0] == 'manage_rent')
-async def manage_rent(callback: CallbackQuery):
+async def manage_rent_handler(callback: CallbackQuery):
     rent_id = callback.data.split('-')[1]
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Завершить аренду", callback_data=f"end_rent-{rent_id}"),
-            InlineKeyboardButton(text="❌ Отменить аренду", callback_data=f"cancel_rent-{rent_id}")
+            InlineKeyboardButton(text="✅ Завершить аренду", callback_data=f"end_rent_admin-{rent_id}"),
+            InlineKeyboardButton(text="❌ Отменить аренду", callback_data=f"cancel_rent_admin-{rent_id}")
+        ],
+        [
+            InlineKeyboardButton(text="📞 Связаться с арендатором", callback_data=f"contact_renter-{rent_id}")
         ],
         [
             InlineKeyboardButton(text="↩️ Назад к арендам", callback_data="active_rents")
@@ -1605,6 +1712,105 @@ async def manage_rent(callback: CallbackQuery):
     )
     await callback.answer()
 
+
+
+@router.callback_query(F.data.split('-')[0] == 'end_rent_admin')
+async def end_rent_admin(callback: CallbackQuery):
+    rent_id = callback.data.split('-')[1]
+
+    await callback.answer(f"Завершение аренды #{rent_id}")
+
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
+async def cancel_rent_admin(callback: CallbackQuery):
+    rent_id = callback.data.split('-')[1]
+
+    await callback.answer(f"Отмена аренды #{rent_id}")
+
+
+@router.callback_query(F.data.split('-')[0] == 'contact_renter')
+async def contact_renter(callback: CallbackQuery):
+    rent_id = callback.data.split('-')[1]
+
+    user_id = await get_user_by_rent_id(rent_id)
+    pd = await get_personal_data(user_id)
+
+    first_name = pd[2] if pd and len(pd) > 2 else "Неизвестно"
+    last_name = pd[3] if pd and len(pd) > 3 else "Неизвестно"
+    number = pd[4] if pd and len(pd) > 4 else "Не указан"
+
+    contact_text = f"""
+📞 <b>Контактная информация арендатора</b>
+
+🏍 <b>Аренда:</b> #{rent_id}
+👤 <b>Арендатор:</b> {first_name} {last_name}
+📱 <b>Телефон:</b> <code>{number}</code>
+🆔 <b>ID пользователя:</b> <code>{user_id}</code>
+
+💬 <b>Способы связи:</b>
+• Скопируйте номер телефона 📋
+• Напишите в Telegram 👇
+• Отправьте сообщение через бота 💬
+"""
+    user = await get_user(tg_id=user_id)
+    username = user[2]
+
+
+    keyboard_buttons = []
+
+    # Кнопка для написания в Telegram
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="✉️ Написать в Telegram",
+            url=f"https://t.me/{username}"
+        )
+    ])
+
+    # Кнопка для отправки сообщения через бота
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="💬 Отправить сообщение",
+            callback_data=f"send_message-{user_id}"
+        )
+    ])
+
+    # Кнопка копирования номера (если номер есть)
+    if number != "Не указан":
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="📋 Скопировать номер",
+                callback_data=f"copy_number-{number}"
+            )
+        ])
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="↩️ Назад к управлению",
+            callback_data=f"manage_rent-{rent_id}"
+        )
+    ])
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="🏠 В админ-панель",
+            callback_data="admin_main"
+        )
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    await callback.message.edit_text(
+        text=contact_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'copy_number')
+async def copy_number_handler(callback: CallbackQuery):
+    number = callback.data.split('-')[1]
+    await callback.answer(f"📋 Номер {number} добавлен в буфер обмена", show_alert=False)
 
 
 
