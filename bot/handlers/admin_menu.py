@@ -1,6 +1,6 @@
 
 import asyncio
-from gettext import textdomain
+import aiosqlite
 
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
@@ -1333,12 +1333,12 @@ async def toggle_ban_user(callback: CallbackQuery):
         else:
             full_name = f'Пользователь #{user_id}'
 
-        if current_ban_status == 0:  # Не забанен
+        if current_ban_status == 0:
             button_text = "🔒 Заблокировать"
             new_ban_status = 1
             action_text = "заблокировать"
             current_status_text = "✅ Активный"
-        else:  # Забанен
+        else:
             button_text = "🔓 Разблокировать"
             new_ban_status = 0
             action_text = "разблокировать"
@@ -1438,6 +1438,172 @@ async def confirm_ban_user(callback: CallbackQuery):
     except Exception as e:
         print(f"Ошибка в confirm_ban: {e}")
         await callback.answer("❌ Произошла ошибка при изменении статуса блокировки")
+
+
+@router.callback_query(F.data == 'active_rents')
+async def active_rents_admin(callback: CallbackQuery, state: FSMContext):
+    try:
+
+        async with aiosqlite.connect('rent-bike.db') as conn:
+            cursor = await conn.cursor()
+            await cursor.execute("""
+            SELECT * FROM rent_details WHERE status = 'active'
+            """)
+            active_rents = await cursor.fetchall()
+
+        if not active_rents:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="↩️ Назад", callback_data="admin_main")]
+            ])
+            await callback.message.edit_text(
+                text="📭 <b>Активных аренд нет</b>\n\nНа данный момент нет активных аренд.",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            return
+
+
+        await state.update_data(active_rents=active_rents, current_page=0)
+        await show_rent_page(callback, state)
+
+    except Exception as e:
+        print(f"Ошибка в active_rents_admin: {e}")
+        await callback.answer("❌ Ошибка при загрузке аренд")
+
+
+async def show_rent_page(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    active_rents = data['active_rents']
+    current_page = data['current_page']
+
+    rent = active_rents[current_page]
+    rent_id, user_id, bike_id, notified, start_time, end_time, status, days, pledge = rent
+
+
+    pd = await get_personal_data(user_id)
+    if pd and len(pd) >= 4:
+        user_name = f"{pd[2]} {pd[3]}"
+    else:
+        user_name = f"Пользователь #{user_id}"
+
+
+    bike = await get_bike_by_id(bike_id)
+    if bike:
+        bike_name = bike[2]
+        display_bike_id = bike[1]
+    else:
+        bike_name = "Неизвестный байк"
+        display_bike_id = bike_id
+
+
+    start_str = datetime.fromisoformat(start_time).strftime('%d.%m.%Y %H:%M')
+    end_str = datetime.fromisoformat(end_time).strftime('%d.%m.%Y %H:%M') if end_time else "Не указано"
+
+
+    rent_card = f"""
+🏍 <b>АКТИВНАЯ АРЕНДА #{rent_id}</b>
+
+👤 <b>Арендатор:</b> {user_name}
+📞 <b>ID пользователя:</b> <code>{user_id}</code>
+
+🚲 <b>Байк:</b> {bike_name}
+🔢 <b>Номер байка:</b> <code>{display_bike_id}</code>
+
+🕐 <b>Начало:</b> {start_str}
+🕔 <b>Окончание:</b> {end_str}
+📅 <b>Дней аренды:</b> {days}
+💰 <b>Залог:</b> {pledge} руб.
+
+📊 <b>Статус:</b> 🟢 Активна
+"""
+
+
+    keyboard_buttons = []
+
+
+    if len(active_rents) > 1:
+        nav_buttons = []
+        if current_page > 0:
+            nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="rent_prev"))
+
+        nav_buttons.append(InlineKeyboardButton(
+            text=f"{current_page + 1}/{len(active_rents)}",
+            callback_data="rent_page"
+        ))
+
+        if current_page < len(active_rents) - 1:
+            nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data="rent_next"))
+
+        keyboard_buttons.append(nav_buttons)
+
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Управление арендой",
+            callback_data=f"manage_rent-{rent_id}"
+        )
+    ])
+
+
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="↩️ Назад в админку", callback_data="admin_main")
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    await callback.message.edit_text(
+        text=rent_card,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == 'rent_prev')
+async def rent_previous(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    current_page = data['current_page']
+    if current_page > 0:
+        await state.update_data(current_page=current_page - 1)
+        await show_rent_page(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'rent_next')
+async def rent_next(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    active_rents = data['active_rents']
+    current_page = data['current_page']
+    if current_page < len(active_rents) - 1:
+        await state.update_data(current_page=current_page + 1)
+        await show_rent_page(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'rent_page')
+async def rent_page_info(callback: CallbackQuery):
+    await callback.answer("📄 Просмотр активных аренд")
+
+
+@router.callback_query(F.data.split('-')[0] == 'manage_rent')
+async def manage_rent(callback: CallbackQuery):
+    rent_id = callback.data.split('-')[1]
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Завершить аренду", callback_data=f"end_rent-{rent_id}"),
+            InlineKeyboardButton(text="❌ Отменить аренду", callback_data=f"cancel_rent-{rent_id}")
+        ],
+        [
+            InlineKeyboardButton(text="↩️ Назад к арендам", callback_data="active_rents")
+        ]
+    ])
+
+    await callback.message.edit_text(
+        text=f"⚙️ <b>Управление арендой #{rent_id}</b>\n\nВыберите действие:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
 
 
 
