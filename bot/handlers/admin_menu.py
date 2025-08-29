@@ -993,11 +993,11 @@ async def confirm_remove_debt(callback: CallbackQuery, state: FSMContext, bot: B
     selected_debt = debts[debt_index]
     tg_id, amount, description = selected_debt[0], selected_debt[1], selected_debt[2]
 
-    # Удаляем долг из базы
+
     success = await remove_debt(tg_id, amount, description)
 
     if success:
-        # Отправляем подтверждение
+
         await callback.message.edit_text(
             text=f"✅ <b>Долг удален!</b>\n\n"
                  f"📝 <b>Описание:</b> {description}\n"
@@ -2001,7 +2001,7 @@ async def process_bike_photo(message: Message, state: FSMContext, bot: Bot):
     else:
         # Возвращаемся к превью
         data = await state.get_data()
-        await show_bike_preview(message, data, state)
+        await show_bike_preview(message, data, state, bot)
 
 
 @router.message(AddBikeStates.waiting_oil)
@@ -2062,7 +2062,7 @@ async def process_bike_description(message: Message, state: FSMContext, bot: Bot
 
     # Всегда показываем превью после ввода описания
     data = await state.get_data()
-    await show_bike_preview(message, data, state)
+    await show_bike_preview(message, data, state, bot)
 
 
 async def show_bike_preview(message: Message, data: dict, state: FSMContext, bot: Bot):
