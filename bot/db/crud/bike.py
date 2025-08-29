@@ -75,26 +75,22 @@ async def get_price(model):
 
 
 
-async def update_bike_to(bike_id: int, to_date: int) -> bool:
+async def update_bike_to(bike_id: int, to_date: int):
     """Обновить дату ТО скутера"""
-    try:
-        async with aiosqlite.connect(DB_PATH) as conn:
-            cursor = await conn.cursor()
-            await cursor.execute(f"""
-            UPDATE {t}
-            SET change_oil_at = ?
-            WHERE bike_id = ?
-            """, (to_date, bike_id))
 
-            await conn.commit()
-            return True
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET change_oil_at = ?
+        WHERE id = ?
+        """, (to_date, bike_id))
+
+        await conn.commit()
 
 
-    except Exception as e:
 
-        print(e)
 
-        return False
 
 
 

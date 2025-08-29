@@ -2408,6 +2408,7 @@ async def reset_search_handler(callback: CallbackQuery, state: FSMContext):
 async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
     bike_id_str = callback.data.split('-')[1]
 
+    await state.clear()
 
     bike_data = await get_bike_by_id(bike_id_str)
 
@@ -2415,7 +2416,7 @@ async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Скутер не найден")
         return
 
-    bike_type, oil_change = bike_data[2], bike_data[4]  # bike[2] - тип, bike[4] - change_oil_at
+    bike_type, oil_change = bike_data[2], bike_data[4]
 
     icon = '🔵' if bike_type == 'dio' else '🟢' if bike_type == 'jog' else '🔴'
 
@@ -2429,16 +2430,71 @@ async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='🛢️ Изменить пробег ТО', callback_data=f'change_oil-{bike_id_str}')],
-        [InlineKeyboardButton(text='📸 Изменить фото', callback_data=f'change_photo-{bike_id_str}')],
-        [InlineKeyboardButton(text='📝 Изменить описание', callback_data=f'change_desc-{bike_id_str}')],
-        [InlineKeyboardButton(text='💰 Изменить цены', callback_data=f'change_prices-{bike_id_str}')],
-        [InlineKeyboardButton(text='❌ Удалить скутер', callback_data=f'delete_bike-{bike_id_str}')],
+        [InlineKeyboardButton(text='🛢️ Изменить пробег ТО', callback_data=f'edit_change_oil-{bike_id_str}')],
+        [InlineKeyboardButton(text='📸 Изменить фото', callback_data=f'edit_change_photo-{bike_id_str}')],
+        [InlineKeyboardButton(text='📝 Изменить описание', callback_data=f'edit_change_desc-{bike_id_str}')],
+        [InlineKeyboardButton(text='❌ Удалить скутер', callback_data=f'edit_delete_bike-{bike_id_str}')],
         [InlineKeyboardButton(text='↩️ К списку', callback_data='edit_bike_list')]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='HTML')
     await callback.answer()
+
+@router.callback_query(F.data.split('-')[0] == 'edit_change_oil')
+async def edit_change_oil(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(EditBikeStates.editing_oil)
+    bike_id = callback.data.split('-')[1]
+    msg = await callback.message.edit_text('Введите новую замену масла')
+    await state.update_data(msg_oil=msg.message_id, bike_id=bike_id)
+
+@router.message(EditBikeStates.editing_oil)
+async def callback_oil(message: Message, state: FSMContext, bot: Bot):
+    state_data = await state.get_data()
+    bike_id = state_data['bike_id']
+    msg_for_del = state_data.get('msg_oil')
+    error_msg_id = state_data.get('error_msg_id')
+
+
+
+    if error_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.from_user.id, message_id=error_msg_id)
+        except TelegramBadRequest:
+            pass
+        await state.update_data(error_msg_id=None)
+
+
+    try:
+        if msg_for_del:
+            await bot.delete_message(chat_id=message.from_user.id, message_id=msg_for_del)
+        await bot.delete_message(chat_id=message.from_user.id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
+
+
+    if message.text.isdigit():
+        new_oil = int(message.text)
+        await update_bike_to(bike_id, new_oil)
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='↩️ К редактированию', callback_data=f'edit_bike-{bike_id}')]
+        ])
+
+        await message.answer(
+            text='✅ <b>Пробег замены масла обновлен</b>',
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+        await state.clear()
+
+    else:
+
+        error_msg = await message.answer(
+            '❌ <b>Только цифры</b>\n\nВведите пробег:',
+            parse_mode='HTML'
+        )
+        await state.update_data(error_msg_id=error_msg.message_id)
+
 
 
 
