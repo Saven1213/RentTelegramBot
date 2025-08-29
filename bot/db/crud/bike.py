@@ -1,4 +1,5 @@
 import aiosqlite
+import logging
 
 from .config import DB_PATH
 
@@ -35,6 +36,7 @@ async def get_bike_by_id(bike_id):
 
         return result
 
+
 async def change_status_not_free(bike_id, tg_id):
     async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
@@ -70,6 +72,32 @@ async def get_price(model):
         #     }
 
         return prices[-3], prices[-2], prices[-1]
+
+
+
+async def update_bike_to(bike_id: int, to_date: int) -> bool:
+    """Обновить дату ТО скутера"""
+    try:
+        async with aiosqlite.connect(DB_PATH) as conn:
+            cursor = await conn.cursor()
+            await cursor.execute(f"""
+            UPDATE {t}
+            SET change_oil_at = ?
+            WHERE bike_id = ?
+            """, (to_date, bike_id))
+
+            await conn.commit()
+            return True
+
+
+    except Exception as e:
+
+        print(e)
+
+        return False
+
+
+
 
 
 

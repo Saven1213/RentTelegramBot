@@ -14,7 +14,7 @@ from bot.db.crud.config import DB_PATH
 
 import json
 
-from bot.db.crud.bike import get_bike_by_id
+from bot.db.crud.bike import get_bike_by_id, get_all_bikes, update_bike_to
 from bot.db.crud.debts import get_debts, add_debt, remove_debt
 from bot.db.crud.equips import save_equips, get_equips_user
 from bot.db.crud.mix_conn import rent_bike
@@ -22,6 +22,7 @@ from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
+from bot.db.crud.photos.bike_rent import get_bike_extra_data
 from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent, get_user_by_rent_id
@@ -1041,12 +1042,12 @@ async def equipment_user(callback: CallbackQuery):
     equip_user = await get_equips_user(user_id)
     pd = await get_personal_data(user_id)
 
-    # Форматируем имя
+
     first_name = pd[2] or ""
     last_name = pd[3] or ""
     full_name = f"{first_name} {last_name}".strip()
 
-    # Собираем доступную экипировку
+
     available_equips = []
     if equip_user[2]:  # helmet
         available_equips.append("🪖 Шлем")
@@ -1619,7 +1620,7 @@ async def show_rent_page(update: Union[Message, CallbackQuery], state: FSMContex
 👤 <b>Арендатор:</b> {user_name}
 📞 <b>ID пользователя:</b> <code>{user_id}</code>
 
-🚲 <b>Байк:</b> {bike_name}
+🏍 <b>Байк:</b> {bike_name}
 🔢 <b>Номер байка:</b> <code>{display_bike_id}</code>
 
 🕐 <b>Начало:</b> {start_str}
@@ -1693,7 +1694,7 @@ async def rent_next(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ УПРАВЛЕНИЯ АРЕНДОЙ
+
 @router.callback_query(F.data.split('-')[0] == 'manage_rent')
 async def manage_rent_handler(callback: CallbackQuery):
     rent_id = callback.data.split('-')[1]
@@ -1764,7 +1765,7 @@ async def contact_renter(callback: CallbackQuery):
 
     keyboard_buttons = []
 
-    # Кнопка для написания в Telegram
+
     keyboard_buttons.append([
         InlineKeyboardButton(
             text="✉️ Написать в Telegram",
@@ -1772,7 +1773,7 @@ async def contact_renter(callback: CallbackQuery):
         )
     ])
 
-    # Кнопка для отправки сообщения через бота
+
     keyboard_buttons.append([
         InlineKeyboardButton(
             text="💬 Отправить сообщение",
@@ -1780,7 +1781,7 @@ async def contact_renter(callback: CallbackQuery):
         )
     ])
 
-    # Кнопка копирования номера (если номер есть)
+
     if number != "Не указан":
         keyboard_buttons.append([
             InlineKeyboardButton(
@@ -1985,10 +1986,10 @@ async def process_bike_photo(message: Message, state: FSMContext, bot: Bot):
     best_photo = message.photo[-1]
     await state.update_data(photo_id=best_photo.file_id)
 
-    # Проверяем, откуда пришли - из процесса добавления или из изменения
+
     current_state = await state.get_state()
     if current_state == AddBikeStates.waiting_photo.state:
-        # Продолжаем обычный процесс
+
         await state.set_state(AddBikeStates.waiting_oil)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
@@ -1999,7 +2000,7 @@ async def process_bike_photo(message: Message, state: FSMContext, bot: Bot):
             reply_markup=keyboard)
         await state.update_data(messages_to_delete=[sent_message.message_id])
     else:
-        # Возвращаемся к превью
+
         data = await state.get_data()
         await show_bike_preview(message, data, state, bot)
 
@@ -2060,7 +2061,7 @@ async def process_bike_description(message: Message, state: FSMContext, bot: Bot
 
     await state.update_data(description=description)
 
-    # Всегда показываем превью после ввода описания
+
     data = await state.get_data()
     await show_bike_preview(message, data, state, bot)
 
@@ -2079,7 +2080,7 @@ async def show_bike_preview(message: Message, data: dict, state: FSMContext, bot
         [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
     ])
 
-    # Удаляем предыдущие сообщения
+
     messages_to_delete = data.get('messages_to_delete', [])
     for msg_id in messages_to_delete:
         try:
@@ -2104,7 +2105,7 @@ async def change_bike_photo(callback: CallbackQuery, state: FSMContext, bot: Bot
         except:
             pass
 
-    # Переходим к ожиданию фото, но с флагом что это изменение
+
     await state.set_state(AddBikeStates.waiting_photo)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
@@ -2126,7 +2127,7 @@ async def change_bike_description(callback: CallbackQuery, state: FSMContext, bo
         except:
             pass
 
-    # Переходим к ожиданию описания
+
     await state.set_state(AddBikeStates.waiting_description)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
@@ -2148,7 +2149,7 @@ async def confirm_bike_add(callback: CallbackQuery, state: FSMContext, bot: Bot)
         except:
             pass
 
-    # Определяем цены в зависимости от модели
+
     model = data['model']
     if model == 'dio':
         price_day = 500
@@ -2207,12 +2208,237 @@ async def restart_bike_add(callback: CallbackQuery, state: FSMContext, bot: Bot)
     await callback.answer()
 
 
+class EditBikeStates(StatesGroup):
+    choosing_bike = State()
+    search_bikes = State()
+    editing_bike = State()
+    editing_photo = State()
+    editing_description = State()
+    editing_oil = State()
+    editing_prices = State()
+    confirm_delete = State()
 
 
+@router.callback_query(F.data == 'edit_bike_list')
+async def edit_bike_list(callback: CallbackQuery, state: FSMContext):
+    bikes = await get_all_bikes()
 
 
+    await state.update_data(
+        all_bikes=bikes,
+        current_page=0,
+        total_pages=(len(bikes) + 4) // 5,
+        search_results=bikes,
+        search_query=None
+    )
+
+    await show_bikes_page(callback, state)
+    await callback.answer()
 
 
+async def show_bikes_page(update: Union[CallbackQuery, Message], state: FSMContext):
+    data = await state.get_data()
+    bikes = data.get('search_results', [])
+    current_page = data.get('current_page', 0)
+    total_pages = data.get('total_pages', 1)
+    search_query = data.get('search_query')
+
+    if not bikes:
+        keyboard_buttons = [
+            [InlineKeyboardButton(text='🔍 Новый поиск', callback_data='search_bikes')]
+        ]
+
+
+        if search_query:
+            keyboard_buttons.append([InlineKeyboardButton(text='🗑️ Сбросить поиск', callback_data='reset_search')])
+
+        keyboard_buttons.append([InlineKeyboardButton(text='↩️ Назад', callback_data='back_to_main')])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+        if isinstance(update, CallbackQuery):
+            await update.message.edit_text("📭 Скутеры не найдены", reply_markup=keyboard)
+        else:
+            await update.answer("📭 Скутеры не найдены", reply_markup=keyboard)
+        return
+
+
+    start_idx = current_page * 5
+    end_idx = start_idx + 5
+    current_bikes = bikes[start_idx:end_idx]
+
+
+    keyboard_buttons = []
+    for bike in current_bikes:
+        bike_id, bike_type, id_ = bike[1], bike[2], bike[0]
+        icon = '🔵' if bike_type == 'dio' else '🟢' if bike_type == 'jog' else '🔴'
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"{icon} {bike_type.upper()} #{bike_id}",
+                callback_data=f"edit_bike-{id_}"
+            )
+        ])
+
+
+    if len(bikes) > 5:
+        nav_buttons = []
+        if current_page > 0:
+            nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="bikes_prev_page"))
+
+        nav_buttons.append(InlineKeyboardButton(
+            text=f"📄 {current_page + 1}/{total_pages}",
+            callback_data="bikes_current_page"
+        ))
+
+        if current_page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data="bikes_next_page"))
+
+        keyboard_buttons.append(nav_buttons)
+
+
+    search_buttons = [
+        [InlineKeyboardButton(text='🔍 Поиск скутеров', callback_data='search_bikes')]
+    ]
+
+
+    if search_query:
+        search_buttons.append([InlineKeyboardButton(text='🗑️ Сбросить поиск', callback_data='reset_search')])
+
+    search_buttons.append([InlineKeyboardButton(text='↩️ Назад', callback_data='back_to_main')])
+
+    keyboard_buttons.extend(search_buttons)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    search_info = f"🔍 Поиск: {search_query}\n\n" if search_query else ""
+    text = f"{search_info}🏍️ <b>ВЫБЕРИТЕ СКУТЕР ДЛЯ РЕДАКТИРОВАНИЯ</b>\n\nСтраница {current_page + 1}/{total_pages}"
+
+    if isinstance(update, CallbackQuery):
+        await update.message.edit_text(text, reply_markup=keyboard, parse_mode='HTML')
+    else:
+        await update.answer(text, reply_markup=keyboard, parse_mode='HTML')
+
+
+@router.callback_query(F.data == 'bikes_prev_page')
+async def bikes_previous_page(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+
+    if current_page > 0:
+        await state.update_data(current_page=current_page - 1)
+        await show_bikes_page(callback, state)
+
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'bikes_next_page')
+async def bikes_next_page(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    total_pages = data.get('total_pages', 1)
+
+    if current_page < total_pages - 1:
+        await state.update_data(current_page=current_page + 1)
+        await show_bikes_page(callback, state)
+
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'search_bikes')
+async def search_bikes_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(EditBikeStates.search_bikes)
+    await callback.message.edit_text("🔍 <b>ПОИСК СКУТЕРОВ</b>\n\nВведите номер, модель или название:",
+                                     parse_mode='HTML')
+    await callback.answer()
+
+
+@router.message(EditBikeStates.search_bikes)
+async def process_bike_search(message: Message, state: FSMContext):
+    search_query = message.text.strip().lower()
+    data = await state.get_data()
+    all_bikes = data.get('all_bikes', [])
+
+    found_bikes = []
+    for bike in all_bikes:
+        bike_id, bike_type = str(bike[1]), bike[2].lower()
+
+
+        if search_query == str(bike_id) or search_query in str(bike_id):
+            found_bikes.append(bike)
+
+        elif search_query == bike_type or search_query in bike_type:
+            found_bikes.append(bike)
+
+        elif (search_query in f"{bike_type}{bike_id}" or
+              search_query in f"{bike_id}{bike_type}"):
+            found_bikes.append(bike)
+
+    await state.update_data(
+        search_results=found_bikes,
+        current_page=0,
+        search_query=search_query
+    )
+    await state.set_state(EditBikeStates.choosing_bike)
+
+    try:
+        await message.delete()
+    except:
+        pass
+
+    await show_bikes_page(message, state)
+
+
+@router.callback_query(F.data == 'reset_search')
+async def reset_search_handler(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    all_bikes = data.get('all_bikes', [])
+
+
+    await state.update_data(
+        search_results=all_bikes,
+        current_page=0,
+        search_query=None
+    )
+
+    await show_bikes_page(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(lambda callback: callback.data.split('-')[0] == 'edit_bike')
+async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
+    bike_id_str = callback.data.split('-')[1]
+
+
+    bike_data = await get_bike_by_id(bike_id_str)
+
+    if not bike_data:
+        await callback.answer("❌ Скутер не найден")
+        return
+
+    bike_type, oil_change = bike_data[2], bike_data[4]  # bike[2] - тип, bike[4] - change_oil_at
+
+    icon = '🔵' if bike_type == 'dio' else '🟢' if bike_type == 'jog' else '🔴'
+
+    text = f"""
+{icon} <b>СКУТЕР #{bike_id_str}</b>
+
+🏍 Модель: {bike_type.upper()}
+🛢️ Последняя замена масла: {oil_change} км
+
+💡 <i>Выберите действие:</i>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🛢️ Изменить пробег ТО', callback_data=f'change_oil-{bike_id_str}')],
+        [InlineKeyboardButton(text='📸 Изменить фото', callback_data=f'change_photo-{bike_id_str}')],
+        [InlineKeyboardButton(text='📝 Изменить описание', callback_data=f'change_desc-{bike_id_str}')],
+        [InlineKeyboardButton(text='💰 Изменить цены', callback_data=f'change_prices-{bike_id_str}')],
+        [InlineKeyboardButton(text='❌ Удалить скутер', callback_data=f'delete_bike-{bike_id_str}')],
+        [InlineKeyboardButton(text='↩️ К списку', callback_data='edit_bike_list')]
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='HTML')
+    await callback.answer()
 
 
 
