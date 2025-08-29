@@ -3,11 +3,14 @@ import asyncio
 import aiosqlite
 from typing import Union
 from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 from datetime import datetime
 from aiogram.filters.callback_data import CallbackData
+
+from bot.db.crud.config import DB_PATH
 
 import json
 
@@ -547,6 +550,9 @@ async def settings(callback: CallbackQuery, state: FSMContext):
         inline_keyboard=[
             [
                 InlineKeyboardButton(text='📍 Обновить карту', callback_data='change_map')
+            ],
+            [
+                InlineKeyboardButton(text='🏍️ Управление скутерами', callback_data='settings_bikes')
             ],
             [
                 InlineKeyboardButton(text='↩️ Назад в админ-панель', callback_data='admin_main')
@@ -1812,6 +1818,393 @@ async def copy_number_handler(callback: CallbackQuery):
     number = callback.data.split('-')[1]
     await callback.answer(f"📋 Номер {number} добавлен в буфер обмена", show_alert=False)
 
+
+
+
+@router.callback_query(F.data == 'settings_bikes')
+async def sett_bikes(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text='🚀 Добавить скутер', callback_data='add_bike'),
+            InlineKeyboardButton(text='✏️ Редактировать', callback_data='edit_bike_list')
+        ],
+        [
+
+            InlineKeyboardButton(text='🏷️ Изменить цены', callback_data='change_prices')
+        ],
+        [
+            InlineKeyboardButton(text='🛑 Вывести из аренды', callback_data='delete_scoot')
+        ],
+        [
+            InlineKeyboardButton(text='↩️ В админку', callback_data='admin_main'),
+            InlineKeyboardButton(text='🏠 В главное меню', callback_data='main')
+        ]
+    ])
+
+    text = """
+🏍️ <b>УПРАВЛЕНИЕ ПАРКОМ СКУТЕРОВ</b>
+
+<code>┌─────────────────────────────┐</code>
+<b>│  🚀  КОМПЛЕКСНЫЙ КОНТРОЛЬ  │</b>
+<code>└─────────────────────────────┘</code>
+
+<code>├───────</code> <b>Основные операции:</b>
+<code>│</code>   🚀 <b>Добавить скутер</b> - новый в систему
+<code>│</code>   ✏️ <b>Редактировать</b> - изменение данных
+<code>│</code>   🏷️ <b>Изменить цены</b> - арендные тарифы
+<code>│</code>   🛑 <b>Удалить из базы</b> - Удаление скутера
+
+
+<code>└───────</code> <i>Выберите нужный раздел ↓</i>
+"""
+
+    try:
+        await callback.message.edit_text(
+            text=text,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+    except TelegramBadRequest:
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer(
+            text=text,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+    await callback.answer()
+
+
+class AddBikeStates(StatesGroup):
+    waiting_name = State()
+    waiting_number = State()
+    waiting_photo = State()
+    waiting_oil = State()
+    waiting_description = State()
+    confirmation = State()
+
+
+@router.callback_query(F.data == 'add_bike')
+async def add_bike_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AddBikeStates.waiting_name)
+    await state.update_data(messages_to_delete=[callback.message.message_id])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='cancel_add_bike')]
+    ])
+
+    text = "🚀 <b>ДОБАВЛЕНИЕ НОВОГО СКУТЕРА</b>\n\n📝 Выберите модель скутера:\n• 🔵 <b>dio</b> - Honda Dio\n• 🟢 <b>jog</b> - Yamaha Jog  \n• 🔴 <b>gear</b> - Yamaha Gear\n\n💡 <i>Введите название модели:</i>"
+
+    sent_message = await callback.message.answer(text=text, parse_mode='HTML', reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+    await callback.answer()
+
+
+@router.message(AddBikeStates.waiting_name)
+async def process_bike_name(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+    messages_to_delete.append(message.message_id)
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    model = message.text.strip().lower()
+    if model not in ['dio', 'jog', 'gear']:
+        sent_message = await message.answer("❌ Пожалуйста, выберите из предложенных моделей: dio, jog, gear")
+        await state.update_data(messages_to_delete=[sent_message.message_id])
+        return
+
+    await state.update_data(model=model)
+    await state.set_state(AddBikeStates.waiting_number)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+
+    sent_message = await message.answer("🔢 <b>Введите номер скутера:</b>\n\n<i>Только цифры, например: 56</i>",
+                                        parse_mode='HTML', reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+
+
+@router.message(AddBikeStates.waiting_number)
+async def process_bike_number(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+    messages_to_delete.append(message.message_id)
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    try:
+        bike_number = int(message.text.strip())
+        if bike_number <= 0:
+            sent_message = await message.answer("❌ Номер должен быть положительным числом")
+            await state.update_data(messages_to_delete=[sent_message.message_id])
+            return
+    except ValueError:
+        sent_message = await message.answer("❌ Пожалуйста, введите корректный номер (только цифры)")
+        await state.update_data(messages_to_delete=[sent_message.message_id])
+        return
+
+    await state.update_data(bike_number=bike_number)
+    await state.set_state(AddBikeStates.waiting_photo)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+
+    sent_message = await message.answer(
+        "📸 <b>Отправьте фото скутера:</b>\n\n<i>Лучшее качество будет использовано в карточке</i>", parse_mode='HTML',
+        reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+
+
+@router.message(AddBikeStates.waiting_photo, F.photo)
+async def process_bike_photo(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+    messages_to_delete.append(message.message_id)
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    best_photo = message.photo[-1]
+    await state.update_data(photo_id=best_photo.file_id)
+
+    # Проверяем, откуда пришли - из процесса добавления или из изменения
+    current_state = await state.get_state()
+    if current_state == AddBikeStates.waiting_photo.state:
+        # Продолжаем обычный процесс
+        await state.set_state(AddBikeStates.waiting_oil)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+        ])
+        sent_message = await message.answer(
+            "🛢️ <b>Введите пробег последней замены масла:</b>\n\n<i>Только цифры, например: 23800</i>",
+            parse_mode='HTML',
+            reply_markup=keyboard)
+        await state.update_data(messages_to_delete=[sent_message.message_id])
+    else:
+        # Возвращаемся к превью
+        data = await state.get_data()
+        await show_bike_preview(message, data, state)
+
+
+@router.message(AddBikeStates.waiting_oil)
+async def process_bike_oil(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+    messages_to_delete.append(message.message_id)
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    try:
+        oil_change = int(message.text.strip())
+        if oil_change < 0:
+            sent_message = await message.answer("❌ Пробег не может быть отрицательным")
+            await state.update_data(messages_to_delete=[sent_message.message_id])
+            return
+    except ValueError:
+        sent_message = await message.answer("❌ Пожалуйста, введите корректный пробег (только цифры)")
+        await state.update_data(messages_to_delete=[sent_message.message_id])
+        return
+
+    await state.update_data(oil_change=oil_change)
+    await state.set_state(AddBikeStates.waiting_description)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+
+    sent_message = await message.answer(
+        "📝 <b>Введите описание скутера:</b>\n\n<i>Максимум 30 символов. Например: 'Крутой черный скутер'</i>",
+        parse_mode='HTML', reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+
+
+@router.message(AddBikeStates.waiting_description)
+async def process_bike_description(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+    messages_to_delete.append(message.message_id)
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    description = message.text.strip()
+    if len(description) > 30:
+        sent_message = await message.answer("❌ Описание слишком длинное. Максимум 30 символов")
+        await state.update_data(messages_to_delete=[sent_message.message_id])
+        return
+
+    await state.update_data(description=description)
+
+    # Всегда показываем превью после ввода описания
+    data = await state.get_data()
+    await show_bike_preview(message, data, state)
+
+
+async def show_bike_preview(message: Message, data: dict, state: FSMContext, bot: Bot):
+    model_icons = {'dio': '🔵 DIO', 'jog': '🟢 JOG', 'gear': '🔴 GEAR'}
+    model_display = model_icons.get(data['model'], f'🏍 {data["model"].upper()}')
+
+    preview_text = f"🏍️ <b>ПРЕВЬЮ СКУТЕРА</b>\n\n<code>┏━━━━━━━━━━━━━━━━━━━━━━━━┓</code>\n<b>  СКУТЕР #{data['bike_number']}  </b>\n<code>┣━━━━━━━━━━━━━━━━━━━━━━━━┫</code>\n<b>│  🚀 Модель:</b> {model_display}\n<b>│  🔧 Последнее ТО в :</b> {data['oil_change']} км\n<b>│  ✅ Статус:</b> СВОБОДЕН\n<code>┗━━━━━━━━━━━━━━━━━━━━━━━━┛</code>\n\n<blockquote><code>📝 {data['description']}</code></blockquote>\n\n<i>Всё верно?</i>"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='📸 Изменить фото', callback_data='change_photo'),
+         InlineKeyboardButton(text='📝 Изменить описание', callback_data='change_description')],
+        [InlineKeyboardButton(text='✅ Подтвердить', callback_data='confirm_bike'),
+         InlineKeyboardButton(text='🔄 Начать заново', callback_data='restart_bike')],
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+
+    # Удаляем предыдущие сообщения
+    messages_to_delete = data.get('messages_to_delete', [])
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    sent_message = await message.answer_photo(photo=data['photo_id'], caption=preview_text, parse_mode='HTML',
+                                              reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+    await state.set_state(AddBikeStates.confirmation)
+
+
+@router.callback_query(F.data == 'change_photo', AddBikeStates.confirmation)
+async def change_bike_photo(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    # Переходим к ожиданию фото, но с флагом что это изменение
+    await state.set_state(AddBikeStates.waiting_photo)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+    sent_message = await callback.message.answer("📸 <b>Отправьте новое фото:</b>", parse_mode='HTML',
+                                                 reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'change_description', AddBikeStates.confirmation)
+async def change_bike_description(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    # Переходим к ожиданию описания
+    await state.set_state(AddBikeStates.waiting_description)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+    sent_message = await callback.message.answer("📝 <b>Введите новое описание:</b>", parse_mode='HTML',
+                                                 reply_markup=keyboard)
+    await state.update_data(messages_to_delete=[sent_message.message_id])
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'confirm_bike', AddBikeStates.confirmation)
+async def confirm_bike_add(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    # Определяем цены в зависимости от модели
+    model = data['model']
+    if model == 'dio':
+        price_day = 500
+        price_week = 400
+        price_month = 300
+    elif model == 'jog':
+        price_day = 600
+        price_week = 500
+        price_month = 400
+    elif model == 'gear':
+        price_day = 700
+        price_week = 600
+        price_month = 500
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("""
+            INSERT INTO bikes (bike_id, bike_type, change_oil_at, gas, is_free, price_day, price_week, price_month) 
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+        """, (data['bike_number'], data['model'], data['oil_change'], 95, price_day, price_week, price_month))
+
+        await cursor.execute("""
+            INSERT INTO photos_rent_bikes (bike_id, file_id, description) 
+            VALUES (?, ?, ?)
+        """, (data['bike_number'], data['photo_id'], data['description']))
+
+        await conn.commit()
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='↩️ К настройкам', callback_data='settings_bikes')
+            ]
+        ]
+    )
+
+    sent_message = await callback.message.answer(
+        "✅ <b>СКУТЕР УСПЕШНО ДОБАВЛЕН!</b>\n\nСкутер добавлен в систему и готов к аренде.", reply_markup=keyboard, parse_mode='HTML')
+    await state.clear()
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'restart_bike', AddBikeStates.confirmation)
+async def restart_bike_add(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    await state.clear()
+    await add_bike_start(callback, state)
+    await callback.answer()
 
 
 
