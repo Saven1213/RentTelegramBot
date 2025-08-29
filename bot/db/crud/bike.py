@@ -89,6 +89,17 @@ async def update_bike_to(bike_id: int, to_date: int):
         await conn.commit()
 
 
+async def delete_bike(bike_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        DELETE FROM {t}
+        WHERE id = ?
+        """, (bike_id,))
+
+        await conn.commit()
+
+
 
 
 

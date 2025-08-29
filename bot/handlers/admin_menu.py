@@ -14,7 +14,7 @@ from bot.db.crud.config import DB_PATH
 
 import json
 
-from bot.db.crud.bike import get_bike_by_id, get_all_bikes, update_bike_to
+from bot.db.crud.bike import get_bike_by_id, get_all_bikes, update_bike_to, delete_bike
 from bot.db.crud.debts import get_debts, add_debt, remove_debt
 from bot.db.crud.equips import save_equips, get_equips_user
 from bot.db.crud.mix_conn import rent_bike
@@ -22,7 +22,8 @@ from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
-from bot.db.crud.photos.bike_rent import get_bike_extra_data, update_bike_photo, update_bike_description
+from bot.db.crud.photos.bike_rent import get_bike_extra_data, update_bike_photo, update_bike_description, \
+    delete_bike_photo
 from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent, get_user_by_rent_id
@@ -114,29 +115,29 @@ from aiogram.types import InlineKeyboardButton
 
 @router.callback_query(F.data.startswith('view_users'))
 async def view_users_admin(callback: CallbackQuery):
-    # Правильно парсим номер страницы
+
     if callback.data == 'view_users':
         page = 0
     else:
-        # Разделяем по нижнему подчеркиванию и берем последнюю часть
+
         parts = callback.data.split('_')
-        page = int(parts[-1])  # Берем последний элемент
+        page = int(parts[-1])
 
     users_list = await get_all_users()
     page_size = 8
     total_pages = max(1, (len(users_list) + page_size - 1) // page_size)
 
-    # Защита от выхода за границы
+
     page = max(0, min(page, total_pages - 1))
 
-    # Получаем пользователей для текущей страницы
+
     start_idx = page * page_size
     end_idx = start_idx + page_size
     page_users = users_list[start_idx:end_idx]
 
     builder = InlineKeyboardBuilder()
 
-    # Добавляем кнопки пользователей
+
     for user in page_users:
         pd = await get_personal_data(user[1])
         builder.row(
@@ -146,7 +147,7 @@ async def view_users_admin(callback: CallbackQuery):
             )
         )
 
-    # Добавляем кнопки навигации
+
     navigation_buttons = []
 
     if page > 0:
@@ -157,7 +158,7 @@ async def view_users_admin(callback: CallbackQuery):
             )
         )
 
-    # Индикатор страницы
+
     navigation_buttons.append(
         InlineKeyboardButton(
             text=f"{page + 1}/{total_pages}",
@@ -176,7 +177,7 @@ async def view_users_admin(callback: CallbackQuery):
     if navigation_buttons:
         builder.row(*navigation_buttons)
 
-    # Кнопка возврата в админ меню
+
     builder.row(
         InlineKeyboardButton(
             text='В админ меню',
@@ -245,7 +246,7 @@ async def check_rent_history(callback: CallbackQuery):
 
     if rents:
         for rent in rents:
-            # Определяем иконку статуса
+
             status_icon = "🟢" if rent[6] == 'active' else "🔴"  # rent[5] - статус
 
             keyboard.inline_keyboard.append(
@@ -2252,7 +2253,7 @@ async def show_bikes_page(update: Union[CallbackQuery, Message], state: FSMConte
         if search_query:
             keyboard_buttons.append([InlineKeyboardButton(text='🗑️ Сбросить поиск', callback_data='reset_search')])
 
-        keyboard_buttons.append([InlineKeyboardButton(text='↩️ Назад', callback_data='back_to_main')])
+        keyboard_buttons.append([InlineKeyboardButton(text='↩️ Назад', callback_data='settings_bikes')])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
@@ -2304,7 +2305,7 @@ async def show_bikes_page(update: Union[CallbackQuery, Message], state: FSMConte
     if search_query:
         search_buttons.append([InlineKeyboardButton(text='🗑️ Сбросить поиск', callback_data='reset_search')])
 
-    search_buttons.append([InlineKeyboardButton(text='↩️ Назад', callback_data='back_to_main')])
+    search_buttons.append([InlineKeyboardButton(text='↩️ Назад', callback_data='settings_bikes')])
 
     keyboard_buttons.extend(search_buttons)
 
@@ -2425,7 +2426,7 @@ async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
     text = f"""
 {icon} <b>СКУТЕР #{bike_id_str}</b>
 
-🏍 Модель: {bike_type.upper()}
+🏍 Модель: <b>{bike_type.upper()}</b>
 🛢️ Последняя замена масла: {oil_change} км
 📝 Описание:
 
@@ -2607,6 +2608,56 @@ async def callback_desc(message: Message, state: FSMContext, bot: Bot):
 
     await message.answer('✅ Описание обновлено', reply_markup=keyboard)
     await state.clear()
+
+
+@router.callback_query(lambda callback: callback.data.split('-')[0] == 'edit_delete_bike')
+async def delete_bike_in_edit(callback: CallbackQuery):
+    id_ = callback.data.split('-')[1]
+    bike_data = await get_bike_by_id(id_)
+    bike_id = bike_data[1]
+    bike_name = bike_data[2]
+    bike_type_icon = '🔵' if bike_name == 'dio' else '🟢' if bike_name == 'jog' else '🔴'
+
+    text = (
+        f'{bike_type_icon} <b>УДАЛЕНИЕ СКУТЕРА</b>\n\n'
+        f'Вы уверены, что хотите удалить <b>{bike_name.upper()} #{bike_id}</b>?\n\n'
+        '❌ <i>Это действие нельзя отменить</i>'
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text='✅ Подтвердить', callback_data=f'confirm_delete_bike-{id_}'),
+            InlineKeyboardButton(text='❌ Отменить', callback_data=f'edit_bike-{id_}')
+        ]
+    ])
+
+    await callback.message.edit_text(text=text, reply_markup=keyboard, parse_mode='HTML')
+    await callback.answer()
+
+
+@router.callback_query(lambda callback: callback.data.split('-')[0] == 'confirm_delete_bike')
+async def delete_bike_edit(callback: CallbackQuery):
+    bike_id = callback.data.split('-')[1]
+
+    bike_data = await get_bike_by_id(bike_id)
+    bike_name = bike_data[2]
+    bike_type_icon = '🔵' if bike_name == 'dio' else '🟢' if bike_name == 'jog' else '🔴'
+
+    await delete_bike_photo(bike_id)
+    await delete_bike(bike_data[0])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🏠 В главное меню', callback_data='main')],
+        [InlineKeyboardButton(text='⚙️ В админ-меню', callback_data='admin_main')]
+    ])
+
+    text = (
+        f'{bike_type_icon} <b>СКУТЕР УДАЛЕН</b>\n\n'
+        f'<b>{bike_name.upper()} #{bike_id}</b> успешно удален из системы'
+    )
+
+    await callback.message.edit_text(text=text, reply_markup=keyboard, parse_mode='HTML')
+    await callback.answer()
 
 
 

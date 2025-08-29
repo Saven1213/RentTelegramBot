@@ -44,3 +44,14 @@ async def get_bike_extra_data(bike_id):
         await cursor.execute("SELECT * FROM photos_rent_bikes WHERE bike_id = ?", (bike_id,))
         return await cursor.fetchone()
 
+
+async def delete_bike_photo(bike_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        DELETE FROM {t}
+        WHERE bike_id = ?
+        """, (bike_id, ))
+
+        await conn.commit()
+
