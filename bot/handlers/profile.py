@@ -790,7 +790,6 @@ async def view_payment_detail(callback: CallbackQuery):
 🔢 <b>Детали:</b>
 • ID: <code>{id}</code>
 • Order ID: <code>{order_id}</code>
-• Комиссия: {commission} {currency}
 """
 
     if days and pledge:

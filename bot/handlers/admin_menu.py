@@ -113,83 +113,299 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 
 
-@router.callback_query(F.data.startswith('view_users'))
-async def view_users_admin(callback: CallbackQuery):
+class AdminStates(StatesGroup):
+    searching_users = State()
 
-    if callback.data == 'view_users':
-        page = 0
+
+@router.callback_query(F.data == 'view_users_start_search')
+async def start_users_search(callback: CallbackQuery, state: FSMContext):
+
+    msg = await callback.message.edit_text(
+        "🔍 <b>Поиск пользователей</b>\n\n"
+        "Введите имя, фамилию или оба через пробел:",
+        parse_mode='HTML'
+    )
+    await state.update_data(search_msg_id=msg.message_id)
+    await state.set_state(AdminStates.searching_users)
+    await callback.answer()
+
+
+@router.message(AdminStates.searching_users)
+async def process_users_search(message: Message, state: FSMContext, bot: Bot):
+    search_query = message.text.strip()
+
+    if search_query:
+
+        state_data = await state.get_data()
+        search_msg_id = state_data.get('search_msg_id')
+
+
+        if search_msg_id:
+            try:
+                await bot.delete_message(chat_id=message.from_user.id, message_id=search_msg_id)
+            except:
+                pass
+
+        # Удаляем сообщение с вводом пользователя
+        try:
+            await message.delete()
+        except:
+            pass
+
+        # Сохраняем поисковый запрос
+        await state.update_data(
+            users_search_query=search_query,
+            users_search_results=None,
+            search_msg_id=None  # Очищаем ID сообщения поиска
+        )
+
+        # Получаем всех пользователей и выполняем поиск
+        all_users = await get_all_users()
+        search_results = []
+        search_terms = search_query.lower().split()
+
+        for user in all_users:
+            pd = await get_personal_data(user[1])
+            if pd:
+                full_name = f"{pd[2]} {pd[3]}".lower()
+
+                # Поиск по всем терминам (AND логика)
+                matches_all = True
+                for term in search_terms:
+                    if term not in full_name:
+                        matches_all = False
+                        break
+
+                if matches_all:
+                    search_results.append(user)
+
+        await state.update_data(users_search_results=search_results)
+
+        # Создаем клавиатуру для результатов поиска
+        builder = InlineKeyboardBuilder()
+
+        for user in search_results[:8]:  # Первые 8 результатов
+            pd = await get_personal_data(user[1])
+            if pd:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"👤 {pd[2]} {pd[3]}",
+                        callback_data=f'view_user-{user[1]}'
+                    )
+                )
+
+        # Добавляем кнопки навигации
+        action_buttons = [
+            InlineKeyboardButton(text="🗑️ Сбросить поиск", callback_data='view_users_reset_search'),
+            InlineKeyboardButton(text='⚙️ В админ меню', callback_data='admin_main')
+        ]
+        builder.row(*action_buttons)
+
+        text = f"🔍 <b>Результаты поиска:</b> {search_query}\n\nНайдено пользователей: {len(search_results)}"
+
+        await message.answer(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode='HTML'
+        )
+
     else:
-
-        parts = callback.data.split('_')
-        page = int(parts[-1])
-
-    users_list = await get_all_users()
-    page_size = 8
-    total_pages = max(1, (len(users_list) + page_size - 1) // page_size)
+        await message.answer("❌ Введите поисковый запрос")
 
 
-    page = max(0, min(page, total_pages - 1))
+@router.callback_query(F.data == 'view_users_reset_search')
+async def reset_users_search(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    # Сбрасываем поиск
+    await state.update_data(
+        users_search_query='',
+        users_search_results=None
+    )
 
-
-    start_idx = page * page_size
-    end_idx = start_idx + page_size
-    page_users = users_list[start_idx:end_idx]
+    # Получаем всех пользователей
+    all_users = await get_all_users()
 
     builder = InlineKeyboardBuilder()
 
-
-    for user in page_users:
+    # Первые 8 пользователей
+    for user in all_users[:8]:
         pd = await get_personal_data(user[1])
-        builder.row(
-            InlineKeyboardButton(
-                text=f"👤 {pd[2]} {pd[3]}",
-                callback_data=f'view_user-{user[1]}'
+        if pd:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"👤 {pd[2]} {pd[3]}",
+                    callback_data=f'view_user-{user[1]}'
+                )
             )
+
+    # Кнопки пагинации если пользователей больше 8
+    if len(all_users) > 8:
+        total_pages = (len(all_users) + 7) // 8
+        nav_buttons = [
+            InlineKeyboardButton(text="⬅️", callback_data="view_users_0"),
+            InlineKeyboardButton(text=f"1/{total_pages}", callback_data="current_page"),
+            InlineKeyboardButton(text="➡️", callback_data="view_users_1")
+        ]
+        builder.row(*nav_buttons)
+
+    # Кнопки действий
+    action_buttons = [
+        InlineKeyboardButton(text="🔍 Поиск пользователей", callback_data='view_users_start_search'),
+        InlineKeyboardButton(text='⚙️ В админ меню', callback_data='admin_main')
+    ]
+    builder.row(*action_buttons)
+
+    text = f'👥 <b>Клиенты</b> (Страница 1/{(len(all_users) + 7) // 8})\n\nВсего пользователей: {len(all_users)}'
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode='HTML'
+        )
+    except TelegramBadRequest:
+        # Если сообщение недоступно, отправляем новое
+        await callback.message.answer(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode='HTML'
         )
 
+    await callback.answer()
 
-    navigation_buttons = []
 
-    if page > 0:
-        navigation_buttons.append(
-            InlineKeyboardButton(
-                text="⬅️ Назад",
-                callback_data=f'view_users_{page - 1}'
+@router.callback_query(F.data.startswith('view_users'))
+async def view_users_admin(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    try:
+        # Получаем текущие данные из state
+        state_data = await state.get_data()
+        search_query = state_data.get('users_search_query', '')
+        search_results = state_data.get('users_search_results')
+
+        # Определяем страницу
+        if callback.data == 'view_users':
+            page = 0
+            search_query = ''
+            search_results = None
+        elif callback.data.startswith('view_users_search_'):
+            search_query = callback.data.replace('view_users_search_', '', 1)
+            page = 0
+            search_results = None
+        elif callback.data == 'view_users_reset_search':
+            page = 0
+            search_query = ''
+            search_results = None
+        else:
+            try:
+                parts = callback.data.split('_')
+                page = int(parts[-1])
+            except ValueError:
+                page = 0
+
+        # Получаем пользователей
+        all_users = await get_all_users()
+
+        # Применяем поиск если есть запрос
+        if search_query and search_results is None:
+            search_results = []
+            search_terms = search_query.lower().split()
+
+            for user in all_users:
+                pd = await get_personal_data(user[1])
+                if pd:
+                    full_name = f"{pd[2]} {pd[3]}".lower()
+                    matches_all = True
+                    for term in search_terms:
+                        if term not in full_name:
+                            matches_all = False
+                            break
+                    if matches_all:
+                        search_results.append(user)
+
+        users_list = search_results if search_query and search_results else all_users
+
+        # Сохраняем состояние
+        await state.update_data(
+            users_search_query=search_query,
+            users_search_results=search_results if search_query else None
+        )
+
+        # Пагинация
+        page_size = 8
+        total_pages = max(1, (len(users_list) + page_size - 1) // page_size)
+        page = max(0, min(page, total_pages - 1))
+        start_idx = page * page_size
+        end_idx = start_idx + page_size
+        page_users = users_list[start_idx:end_idx]
+
+        builder = InlineKeyboardBuilder()
+
+        # Кнопки пользователей
+        for user in page_users:
+            pd = await get_personal_data(user[1])
+            if pd:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"👤 {pd[2]} {pd[3]}",
+                        callback_data=f'view_user-{user[1]}'
+                    )
+                )
+
+        # Кнопки пагинации
+        if len(users_list) > page_size:
+            nav_buttons = []
+            if page > 0:
+                nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f'view_users_{page - 1}'))
+
+            nav_buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data='current_page'))
+
+            if page < total_pages - 1:
+                nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f'view_users_{page + 1}'))
+
+            builder.row(*nav_buttons)
+
+        # Кнопки действий
+        action_buttons = []
+        if search_query:
+            action_buttons.append(
+                InlineKeyboardButton(text="🗑️ Сбросить поиск", callback_data='view_users_reset_search'))
+        else:
+            action_buttons.append(
+                InlineKeyboardButton(text="🔍 Поиск пользователей", callback_data='view_users_start_search'))
+
+        action_buttons.append(InlineKeyboardButton(text='⚙️ В админ меню', callback_data='admin_main'))
+        builder.row(*action_buttons)
+
+        # Текст сообщения
+        search_info = f"🔍 Поиск: {search_query}\n" if search_query else ""
+        text = (
+            f'👥 <b>Клиенты</b> (Страница {page + 1}/{total_pages})\n\n'
+            f'{search_info}'
+            f'Всего пользователей: {len(users_list)}'
+        )
+
+        # Пытаемся обновить сообщение
+        try:
+            await callback.message.edit_text(
+                text,
+                reply_markup=builder.as_markup(),
+                parse_mode='HTML'
             )
-        )
+        except TelegramBadRequest as e:
+            if "message to edit not found" in str(e):
+                # Отправляем новое сообщение
+                await callback.message.answer(
+                    text,
+                    reply_markup=builder.as_markup(),
+                    parse_mode='HTML'
+                )
+            elif "message is not modified" not in str(e):
+                raise e
 
+        await callback.answer()
 
-    navigation_buttons.append(
-        InlineKeyboardButton(
-            text=f"{page + 1}/{total_pages}",
-            callback_data='current_page'
-        )
-    )
-
-    if page < total_pages - 1:
-        navigation_buttons.append(
-            InlineKeyboardButton(
-                text="Вперед ➡️",
-                callback_data=f'view_users_{page + 1}'
-            )
-        )
-
-    if navigation_buttons:
-        builder.row(*navigation_buttons)
-
-
-    builder.row(
-        InlineKeyboardButton(
-            text='В админ меню',
-            callback_data='admin_main'
-        )
-    )
-
-    await callback.message.edit_text(
-        f'👥 Клиенты (Страница {page + 1}/{total_pages})\n\n'
-        f'Всего пользователей: {len(users_list)}',
-        reply_markup=builder.as_markup()
-    )
+    except Exception as e:
+        print(f"Error in view_users_admin: {e}")
+        await callback.answer("❌ Произошла ошибка")
 
 
 @router.callback_query(F.data.split('-')[0] == 'view_user')
