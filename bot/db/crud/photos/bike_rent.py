@@ -5,21 +5,19 @@ from ..config import DB_PATH
 
 t = 'photos_rent_bikes'
 
-async def update_bike_photo(bike_id: int, photo_file_id: str) -> bool:
+async def update_bike_photo(bike_id: int, photo_file_id: str):
     """Обновить фото скутера"""
-    try:
-        async with aiosqlite.connect(DB_PATH) as conn:
-            cursor = await conn.cursor()
-            await cursor.execute(f"""
-            UPDATE {t}
-            SET file_id = ?
-            WHERE bike_id = ?
-            """, (photo_file_id, bike_id))
 
-            await conn.commit()
-    except Exception:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET file_id = ?
+        WHERE id = ?
+        """, (photo_file_id, bike_id))
 
-        return False
+        await conn.commit()
+
 
 async def update_bike_description(bike_id: int, description: str) -> bool:
     """Обновить описание скутера"""
@@ -29,7 +27,7 @@ async def update_bike_description(bike_id: int, description: str) -> bool:
             await cursor.execute(f"""
             UPDATE {t}
             SET description = ?
-            WHERE bike_id = ?
+            WHERE id = ?
             """, (description, bike_id))
 
             await conn.commit()

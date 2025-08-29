@@ -22,7 +22,7 @@ from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
-from bot.db.crud.photos.bike_rent import get_bike_extra_data
+from bot.db.crud.photos.bike_rent import get_bike_extra_data, update_bike_photo, update_bike_description
 from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent, get_user_by_rent_id
@@ -2411,6 +2411,8 @@ async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
     await state.clear()
 
     bike_data = await get_bike_by_id(bike_id_str)
+    bike_extra_data = await get_bike_extra_data(bike_data[1])
+    bike_desc = bike_extra_data[3]
 
     if not bike_data:
         await callback.answer("❌ Скутер не найден")
@@ -2425,6 +2427,11 @@ async def edit_bike_detail(callback: CallbackQuery, state: FSMContext):
 
 🏍 Модель: {bike_type.upper()}
 🛢️ Последняя замена масла: {oil_change} км
+📝 Описание:
+
+<blockquote><code>
+{bike_desc}
+</code></blockquote>
 
 💡 <i>Выберите действие:</i>
 """
@@ -2494,6 +2501,113 @@ async def callback_oil(message: Message, state: FSMContext, bot: Bot):
             parse_mode='HTML'
         )
         await state.update_data(error_msg_id=error_msg.message_id)
+
+@router.callback_query(F.data.split('-')[0] == 'edit_change_photo')
+async def edit_change_photo(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(EditBikeStates.editing_photo)
+    bike_id = callback.data.split('-')[1]
+    msg = await callback.message.edit_text('Отправьте новое фото')
+    await state.update_data(msg_photo=msg.message_id, bike_id=bike_id)
+
+
+@router.message(EditBikeStates.editing_photo)
+async def callback_photo(message: Message, state: FSMContext, bot: Bot):
+    state_data = await state.get_data()
+    bike_id = state_data['bike_id']
+
+
+    if error_msg_id := state_data.get('error_msg_id'):
+        try:
+            await bot.delete_message(chat_id=message.from_user.id, message_id=error_msg_id)
+        except TelegramBadRequest:
+            pass
+
+
+    if not message.photo:
+        error_msg = await message.answer(
+            '📸 <b>Отправьте фото</b>\n\n' +
+            '<i>Пожалуйста, отправьте изображение</i>',
+            parse_mode='HTML'
+        )
+        await state.update_data(error_msg_id=error_msg.message_id)
+        return
+
+
+    try:
+        if msg_for_del := state_data.get('msg_photo'):
+            await bot.delete_message(chat_id=message.from_user.id, message_id=msg_for_del)
+        await bot.delete_message(chat_id=message.from_user.id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
+
+
+    new_photo = message.photo[-1].file_id
+    await update_bike_photo(bike_id, new_photo)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='↩️ К редактированию', callback_data=f'edit_bike-{bike_id}')]
+    ])
+
+    await message.answer(
+        '✅ <b>Фото обновлено</b>',
+        parse_mode='HTML', reply_markup=keyboard
+    )
+    await state.clear()
+
+
+@router.callback_query(lambda callback: callback.data.split('-')[0] == 'edit_change_desc')
+async def edit_desc(callback: CallbackQuery, state: FSMContext):
+    bike_id = callback.data.split('-')[1]
+    msg = await callback.message.edit_text(
+        '📝 <b>Введите описание</b>\n\n' +
+        '<i>Максимум 30 символов</i>',
+        parse_mode='HTML'
+    )
+    await state.set_state(EditBikeStates.editing_description)
+    await state.update_data(msg_desc=msg.message_id, bike_id=bike_id)
+    await callback.answer()
+
+
+@router.message(EditBikeStates.editing_description)
+async def callback_desc(message: Message, state: FSMContext, bot: Bot):
+    state_data = await state.get_data()
+    bike_id = state_data['bike_id']
+
+
+    if error_msg_id := state_data.get('error_msg_id'):
+        try:
+            await bot.delete_message(chat_id=message.from_user.id, message_id=error_msg_id)
+        except:
+            pass
+
+
+    new_description = message.text.strip()
+    if len(new_description) > 30:
+        error_msg = await message.answer(
+            '❌ <b>Слишком длинно</b>\n\n' +
+            '<i>Максимум 30 символов</i>',
+            parse_mode='HTML'
+        )
+        await state.update_data(error_msg_id=error_msg.message_id)
+        return
+
+
+    try:
+        if msg_desc := state_data.get('msg_desc'):
+            await bot.delete_message(chat_id=message.from_user.id, message_id=msg_desc)
+        await bot.delete_message(chat_id=message.from_user.id, message_id=message.message_id)
+    except:
+        pass
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='↩️ К редактированию', callback_data=f'edit_bike-{bike_id}')]
+    ])
+
+    await update_bike_description(bike_id, new_description)
+
+    await message.answer('✅ Описание обновлено', reply_markup=keyboard)
+    await state.clear()
+
 
 
 
