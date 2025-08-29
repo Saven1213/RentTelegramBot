@@ -158,6 +158,8 @@ class PhotoBikesRent(Base):
 
     file_id: Mapped[str] = mapped_column(String)
 
+    description: Mapped[str] = mapped_column(String(30))
+
 class PhotoMap(Base):
     __tablename__ = 'photo_map'
 

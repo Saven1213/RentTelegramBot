@@ -2,9 +2,10 @@ import uuid
 
 import json
 
-
+import aiosqlite
 from aiogram import Router, F, Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message, InputMediaPhoto
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
@@ -17,6 +18,7 @@ from bot.db.crud.user import get_user, get_all_admins
 
 from bot.config import cl
 from cardlink._types import Bill
+from bot.db.crud.config import DB_PATH
 
 
 
@@ -74,97 +76,124 @@ async def rent_scooter(callback: CallbackQuery):
         reply_markup=keyboard
     )
 
+
 @router.callback_query(F.data.split('-')[0] == 'view_scooter')
 async def change_scooter(callback: CallbackQuery):
-    tg_id = callback.from_user.id
-    data = callback.data.split('-')[1]
+    try:
+        tg_id = callback.from_user.id
+        data = callback.data.split('-')[1]
 
-    bikes = await get_bike_by_type(data)
+        bikes = await get_bike_by_type(data)
 
-    # Проверяем, есть ли свободные скутеры
-    free_bikes_available = False
-    if bikes:
+        # Проверяем, есть ли свободные скутеры
+        free_bikes_available = False
+        if bikes:
+            for bike in bikes:
+                if bike[3] is None:
+                    free_bikes_available = True
+                    break
+
+        if not free_bikes_available:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Назад', callback_data='scooter')]
+            ])
+            # Удаляем предыдущее и отправляем новое
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await callback.message.answer(
+                f'На данный момент {data} нет в наличии 😢\nПосмотрите другие варианты!',
+                reply_markup=keyboard
+            )
+            return
+
+        # Если есть свободные скутеры
+        keyboard_buttons = []
+
         for bike in bikes:
-            # bike[3] - это поле user (кто арендовал)
-            if bike[3] is None:  # Если скутер свободен
-                free_bikes_available = True
-                break
+            if bike[3] is None:
+                bike_icons = {
+                    'dio': '🔵',
+                    'jog': '🟢',
+                    'gear': '🔴'
+                }
+                icon = bike_icons.get(bike[2].lower(), '🏍')
 
-    if not free_bikes_available:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text='Назад', callback_data='scooter')
-            ]
-        ])
-        await callback.message.edit_text(
-            f'На данный момент {data} нет в наличии 😢\nПосмотрите другие варианты!',
-            reply_markup=keyboard
-        )
-        return
-
-    # Если есть свободные скутеры
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-
-    for bike in bikes:
-        # Показываем только свободные скутеры
-        if bike[3] is None:  # bike[3] - поле user (кто арендовал)
-            bike_icons = {
-                'dio': '🔵',
-                'jog': '🟢',
-                'gear': '🔴'
-            }
-            icon = bike_icons.get(bike[2].lower(), '🏍')
-
-            keyboard.inline_keyboard.append(
-                [
+                keyboard_buttons.append([
                     InlineKeyboardButton(
                         text=f"{icon} {bike[2].upper()} #{bike[1]}",
                         callback_data=f"bikerent-{bike[0]}"
                     )
-                ]
+                ])
+
+        # Если после фильтрации не осталось свободных скутеров
+        if not keyboard_buttons:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Назад', callback_data='scooter')]
+            ])
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await callback.message.answer(
+                f'На данный момент {data} нет в наличии 😢\nПосмотрите другие варианты!',
+                reply_markup=keyboard
+            )
+            return
+
+        keyboard_buttons.append([
+            InlineKeyboardButton(text='↩️ Назад', callback_data='scooter')
+        ])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+        try:
+            await callback.message.edit_text('🚀 Свободные скутеры на выбор: ', reply_markup=keyboard)
+        except TelegramBadRequest:
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await callback.message.answer(
+                '🚀 Свободные скутеры на выбор: ',
+                reply_markup=keyboard
             )
 
-    # Если после фильтрации не осталось свободных скутеров (маловероятно, но на всякий случай)
-    if not keyboard.inline_keyboard:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text='Назад', callback_data='scooter')
-            ]
-        ])
-        await callback.message.edit_text(
-            f'На данный момент {data} нет в наличии 😢\nПосмотрите другие варианты!',
-            reply_markup=keyboard
-        )
-        return
-
-    keyboard.inline_keyboard.append(
-        [
-            InlineKeyboardButton(text='↩️ Назад', callback_data='scooter')
-        ]
-    )
-    await callback.message.edit_text('🚀 Свободные скутеры на выбор: ', reply_markup=keyboard)
+    except Exception as e:
+        print(f"Ошибка в change_scooter: {e}")
+        await callback.answer("❌ Произошла ошибка")
 
 
 @router.callback_query(F.data.split('-')[0] == 'bikerent')
 async def bike_number(callback: CallbackQuery):
-    tg_id = callback.from_user.id
+    try:
+        tg_id = callback.from_user.id
+        data = callback.data.split('-')[1]
 
-    # user = await get_user(tg_id)
-    #
-    # print(user, ' находится на карточке мотоцикла')
+        bike = await get_bike_by_id(data)
 
-    data = callback.data.split('-')[1]
-    bike = await get_bike_by_id(data)
+        async with aiosqlite.connect(DB_PATH) as conn:
+            cursor = await conn.cursor()
+            await cursor.execute("""
+            SELECT file_id, description 
+            FROM photos_rent_bikes 
+            WHERE bike_id = ? 
+            ORDER BY id
+            """, (bike[1],))
+            bike_photos_data = await cursor.fetchall()
 
-    # Иконки для разных моделей
-    model_icons = {
-        'dio': '🔵 DIO',
-        'jog': '🟢 JOG',
-        'gear': '🔴 GEAR'
-    }
-    model_display = model_icons.get(bike[2].lower(), f'🏍 {bike[2].upper()}')
+        description = bike_photos_data[0][1] if bike_photos_data and bike_photos_data[0][1] else None
+        bike_photos = [photo[0] for photo in bike_photos_data] if bike_photos_data else []
 
-    bike_card = f"""
+        model_icons = {
+            'dio': '🔵 DIO',
+            'jog': '🟢 JOG',
+            'gear': '🔴 GEAR'
+        }
+        model_display = model_icons.get(bike[2].lower(), f'🏍 {bike[2].upper()}')
+
+        bike_card = f"""
 <code>┏━━━━━━━━━━━━━━━━━━━━━━━━┓</code>
 <b>  🏍 СКУТЕР #{bike[1]}  </b>
 <code>┣━━━━━━━━━━━━━━━━━━━━━━━━┫</code>
@@ -177,53 +206,133 @@ async def bike_number(callback: CallbackQuery):
 <i>✨ Готов к аренде прямо сейчас!</i>
 """
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text='🛵 Арендовать', callback_data=f'period-{bike[0]}'),
-            InlineKeyboardButton(text='📞 Поддержка', url='t.me/hulkbike_support')
-        ],
-        [
-            InlineKeyboardButton(text='↩️ К списку', callback_data=f'view_scooter-{bike[2].lower()}')
-        ]
-    ])
+        if description:
+            bike_card += f"\n<blockquote><code>📝 {description}</code></blockquote>"
 
-    await callback.message.edit_text(
-        text=bike_card,
-        parse_mode='HTML',
-        reply_markup=keyboard
-    )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text='🛵 Арендовать', callback_data=f'period-{bike[0]}'),
+                InlineKeyboardButton(text='📞 Поддержка', url='t.me/hulkbike_support')
+            ],
+            [
+                InlineKeyboardButton(text='↩️ К списку', callback_data=f'view_scooter-{bike[2].lower()}')
+            ]
+        ])
 
+        # ПРИОРИТЕТ: edit_text, если возможно
+        if not bike_photos:
+            # Если нет фото - пробуем отредактировать текст
+            try:
+                await callback.message.edit_text(
+                    text=bike_card,
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+            except TelegramBadRequest:
+                # Если не получилось редактировать - удаляем и отправляем новое
+                try:
+                    await callback.message.delete()
+                except:
+                    pass
+                await callback.message.answer(
+                    text=bike_card,
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+        else:
+            # Есть фото - всегда удаляем и отправляем новое
+            try:
+                await callback.message.delete()
+            except:
+                pass
+
+            if len(bike_photos) > 1:
+                media = []
+                for i, file_id in enumerate(bike_photos):
+                    if i == 0:
+                        media.append(InputMediaPhoto(
+                            media=file_id,
+                            caption=bike_card,
+                            parse_mode='HTML'
+                        ))
+                    else:
+                        media.append(InputMediaPhoto(media=file_id))
+
+                await callback.message.answer_media_group(media=media)
+                await callback.message.answer(
+                    text="Выберите действие:",
+                    reply_markup=keyboard
+                )
+            else:
+                await callback.message.answer_photo(
+                    photo=bike_photos[0],
+                    caption=bike_card,
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+
+    except Exception as e:
+        print(f"Ошибка в bike_number: {e}")
+        await callback.answer("❌ Произошла ошибка при загрузке данных")
 
 
 @router.callback_query(F.data.split('-')[0] == 'period')
 async def period(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
+    try:
+        await state.clear()
+        data = callback.data.split('-')[1]
 
-    data = callback.data.split('-')[1]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text='📅 3 дня', callback_data=f'rent_scooter_but-{data}-3'),
+                InlineKeyboardButton(text='📅 7 дней', callback_data=f'rent_scooter_but-{data}-7')
+            ],
+            [
+                InlineKeyboardButton(text='📅 30 дней', callback_data=f'rent_scooter_but-{data}-30')
+            ],
+            [
+                InlineKeyboardButton(text='✏️ Выбрать вручную', callback_data=f'write_period-{data}')
+            ]
+        ])
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text='📅 3 дня', callback_data=f'rent_scooter_but-{data}-3'),
-            InlineKeyboardButton(text='📅 7 дней', callback_data=f'rent_scooter_but-{data}-7')
-        ],
-        [
-            InlineKeyboardButton(text='📅 30 дней', callback_data=f'rent_scooter_but-{data}-30')
-        ],
-        [
-            InlineKeyboardButton(text='✏️ Выбрать вручную', callback_data=f'write_period-{data}')
-        ]
-    ])
+        text = (
+            "🏍️ <b>ВЫБЕРИТЕ СРОК АРЕНДЫ</b>\n\n"
+            "🚀 <i>Готовы к поездке? Выбирайте удобный период:</i>\n\n"
+            "🔹 <b>3 дня</b> — идеально для теста\n"
+            "🔹 <b>7 дней</b> — оптимальный вариант\n"
+            "🔹 <b>30 дней</b> — максимальная выгода\n\n"
+            "💎 <i>Нужен другой срок? Укажите вручную</i>"
+        )
 
-    await callback.message.edit_text(
-        "🏍️ <b>ВЫБЕРИТЕ СРОК АРЕНДЫ</b>\n\n"
-        "🚀 <i>Готовы к поездке? Выбирайте удобный период:</i>\n\n"
-        "🔹 <b>3 дня</b> — идеально для теста\n"
-        "🔹 <b>7 дней</b> — оптимальный вариант\n"
-        "🔹 <b>30 дней</b> — максимальная выгода\n\n"
-        "💎 <i>Нужен другой срок? Укажите вручную</i>",
-        parse_mode='HTML',
-        reply_markup=keyboard
-    )
+        # Пробуем отредактировать сообщение
+        try:
+            await callback.message.edit_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=keyboard
+            )
+        except TelegramBadRequest:
+            # Если не получилось редактировать (например, сообщение с фото)
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await callback.message.answer(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=keyboard
+            )
+
+    except Exception as e:
+        print(f"Ошибка в period: {e}")
+        # Fallback: всегда пытаемся отправить сообщение
+        try:
+            await callback.message.answer(
+                text="🏍️ Выберите срок аренды",
+                reply_markup=keyboard
+            )
+        except:
+            await callback.answer("❌ Произошла ошибка")
 
 class SelectPeriod(StatesGroup):
     select_period = State()
