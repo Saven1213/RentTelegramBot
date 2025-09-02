@@ -2128,6 +2128,7 @@ class AddBikeStates(StatesGroup):
     waiting_photo = State()
     waiting_oil = State()
     waiting_description = State()
+    waiting_vin = State()
     confirmation = State()
 
 
@@ -2208,7 +2209,8 @@ async def process_bike_number(message: Message, state: FSMContext, bot: Bot):
     ])
 
     sent_message = await message.answer(
-        "📸 <b>Отправьте фото скутера:</b>\n\n<i>Лучшее качество будет использовано в карточке</i>", parse_mode='HTML',
+        "📸 <b>Отправьте фото скутера:</b>\n\n<i>Лучшее качество будет использовано в карточке</i>",
+        parse_mode='HTML',
         reply_markup=keyboard)
     await state.update_data(messages_to_delete=[sent_message.message_id])
 
@@ -2228,10 +2230,8 @@ async def process_bike_photo(message: Message, state: FSMContext, bot: Bot):
     best_photo = message.photo[-1]
     await state.update_data(photo_id=best_photo.file_id)
 
-
     current_state = await state.get_state()
     if current_state == AddBikeStates.waiting_photo.state:
-
         await state.set_state(AddBikeStates.waiting_oil)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
@@ -2242,7 +2242,6 @@ async def process_bike_photo(message: Message, state: FSMContext, bot: Bot):
             reply_markup=keyboard)
         await state.update_data(messages_to_delete=[sent_message.message_id])
     else:
-
         data = await state.get_data()
         await show_bike_preview(message, data, state, bot)
 
@@ -2303,7 +2302,37 @@ async def process_bike_description(message: Message, state: FSMContext, bot: Bot
 
     await state.update_data(description=description)
 
+    await state.set_state(AddBikeStates.waiting_vin)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
+    ])
+    sent_message = await message.answer(
+        "🔑 <b>Введите VIN номер скутера:</b>\n\n<i>Пример: JH2RC4467GK123456</i>",
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+    await state.update_data(messages_to_delete=[sent_message.message_id])
 
+
+@router.message(AddBikeStates.waiting_vin)
+async def process_bike_vin(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    messages_to_delete = data.get('messages_to_delete', [])
+    messages_to_delete.append(message.message_id)
+
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        except:
+            pass
+
+    vin = message.text.strip()
+    if len(vin) < 5:
+        sent_message = await message.answer("❌ VIN слишком короткий")
+        await state.update_data(messages_to_delete=[sent_message.message_id])
+        return
+
+    await state.update_data(vin=vin)
     data = await state.get_data()
     await show_bike_preview(message, data, state, bot)
 
@@ -2312,7 +2341,20 @@ async def show_bike_preview(message: Message, data: dict, state: FSMContext, bot
     model_icons = {'dio': '🔵 DIO', 'jog': '🟢 JOG', 'gear': '🔴 GEAR'}
     model_display = model_icons.get(data['model'], f'🏍 {data["model"].upper()}')
 
-    preview_text = f"🏍️ <b>ПРЕВЬЮ СКУТЕРА</b>\n\n<code>┏━━━━━━━━━━━━━━━━━━━━━━━━┓</code>\n<b>  СКУТЕР #{data['bike_number']}  </b>\n<code>┣━━━━━━━━━━━━━━━━━━━━━━━━┫</code>\n<b>│  🚀 Модель:</b> {model_display}\n<b>│  🔧 Последнее ТО в :</b> {data['oil_change']} км\n<b>│  ✅ Статус:</b> СВОБОДЕН\n<code>┗━━━━━━━━━━━━━━━━━━━━━━━━┛</code>\n\n<blockquote><code>📝 {data['description']}</code></blockquote>\n\n<i>Всё верно?</i>"
+    vin_text = f"\n<b>🔑 VIN:</b> {data['vin']}" if 'vin' in data else ""
+
+    preview_text = (
+        f"🏍️ <b>ПРЕВЬЮ СКУТЕРА</b>\n\n"
+        f"<code>┏━━━━━━━━━━━━━━━━━━━━━━━━┓</code>\n"
+        f"<b>  СКУТЕР #{data['bike_number']}  </b>\n"
+        f"<code>┣━━━━━━━━━━━━━━━━━━━━━━━━┫</code>\n"
+        f"<b>│  🚀 Модель:</b> {model_display}\n"
+        f"<b>│  🔧 Последнее ТО в :</b> {data['oil_change']} км\n"
+        f"<b>│  ✅ Статус:</b> СВОБОДЕН{vin_text}\n"
+        f"<code>┗━━━━━━━━━━━━━━━━━━━━━━━━┛</code>\n\n"
+        f"<blockquote><code>📝 {data['description']}</code></blockquote>\n\n"
+        "<i>Всё верно?</i>"
+    )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='📸 Изменить фото', callback_data='change_photo'),
@@ -2322,7 +2364,6 @@ async def show_bike_preview(message: Message, data: dict, state: FSMContext, bot
         [InlineKeyboardButton(text='❌ Отменить', callback_data='settings_bikes')]
     ])
 
-
     messages_to_delete = data.get('messages_to_delete', [])
     for msg_id in messages_to_delete:
         try:
@@ -2330,10 +2371,11 @@ async def show_bike_preview(message: Message, data: dict, state: FSMContext, bot
         except:
             pass
 
-    sent_message = await message.answer_photo(photo=data['photo_id'], caption=preview_text, parse_mode='HTML',
-                                              reply_markup=keyboard)
+    sent_message = await message.answer_photo(photo=data['photo_id'], caption=preview_text,
+                                              parse_mode='HTML', reply_markup=keyboard)
     await state.update_data(messages_to_delete=[sent_message.message_id])
     await state.set_state(AddBikeStates.confirmation)
+
 
 
 @router.callback_query(F.data == 'change_photo', AddBikeStates.confirmation)
@@ -2409,9 +2451,9 @@ async def confirm_bike_add(callback: CallbackQuery, state: FSMContext, bot: Bot)
     async with aiosqlite.connect(DB_PATH) as conn:
         cursor = await conn.cursor()
         await cursor.execute("""
-            INSERT INTO bikes (bike_id, bike_type, change_oil_at, gas, is_free, price_day, price_week, price_month) 
-            VALUES (?, ?, ?, ?, 1, ?, ?, ?)
-        """, (data['bike_number'], data['model'], data['oil_change'], 95, price_day, price_week, price_month))
+            INSERT INTO bikes (bike_id, bike_type, change_oil_at, gas, is_free, price_day, price_week, price_month, vin) 
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+        """, (data['bike_number'], data['model'], data['oil_change'], 95, price_day, price_week, price_month, data['vin']))
 
         await cursor.execute("""
             INSERT INTO photos_rent_bikes (bike_id, file_id, description) 

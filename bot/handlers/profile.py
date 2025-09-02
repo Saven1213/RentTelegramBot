@@ -332,6 +332,7 @@ async def my_scooter(callback: CallbackQuery, state: FSMContext):
             f'🏍 <b>ВАШ СКУТЕР</b>\n\n'
             f'<code>┌────────────────────────┐</code>\n'
             f'<b>│</b> 🏍 <b>Модель:</b> {bike[2]}\n'
+            f'<b>│</b> 🏍 <b>VIN-номер:</b> {bike[10] if bike[10] else 'Не указано'}\n'
             f'<b>│</b> 🔧 <b>Замена масла:</b> {last_oil_change}\n'
             f'<b>│</b> ⏰ <b>Следующая замена:</b> {next_oil_change}\n'
             f'<code>└────────────────────────┛</code>\n\n'
@@ -348,14 +349,28 @@ async def my_equips(callback: CallbackQuery):
 
 
     available_equips = []
-    if equips[2]:
-        available_equips.append("🪖 Шлем")
-    if equips[3]:
-        available_equips.append("⛓️ Цепь")
-    if equips[4]:
-        available_equips.append("🎒 Сумка")
-    if equips[5]:
-        available_equips.append("🧳 Багажник")
+    for index, value in enumerate(equips):
+
+        if not value:
+            continue
+
+        match index:
+            case 2:
+                available_equips.append("🪖 Шлем")
+            case 3:
+                available_equips.append("⛓️ Цепь")
+            case 4:
+                available_equips.append("🎒 Сумка")
+            case 5:
+                available_equips.append("🧳 Багажник")
+            case 6:
+                available_equips.append("🟠 Резинка")
+            case 7:
+                available_equips.append("📱 Держатель для телефона")
+            case 8:
+                available_equips.append("🔌 Зарядка")
+            case _:
+                pass
 
 
     if available_equips:

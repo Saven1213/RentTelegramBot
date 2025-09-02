@@ -469,11 +469,13 @@ async def but_rent(callback: CallbackQuery):
             [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]
         ])
-
+        pledge = 2000
         await callback.message.edit_text(
             f"🎉 Отличный выбор!\n\n"
             f"🚴 Скутер <b>{bike_model[2]} #{bike_model[1]}</b>\n"
-            f"💵 Сумма к оплате: <b>{price} руб</b>\n\n"
+            f"💵 Сумма к оплате: <b>{price + pledge} руб</b>\n"
+            f"<i>Залог</i>: {pledge}"
+            f"\n\n"
             f"Для подтверждения аренды нажмите кнопку оплаты ниже 👇",
             reply_markup=keyboard_invoice,
             parse_mode='HTML'

@@ -55,6 +55,8 @@ class Bike(Base):
 
     price_month: Mapped[int] = mapped_column(Integer)
 
+    vin: Mapped[str] = mapped_column(String, nullable=True)
+
 
 
 
