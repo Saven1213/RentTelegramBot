@@ -118,6 +118,9 @@ class Equip(Base):
     chain: Mapped[bool] = mapped_column(Boolean, default=False)
     box: Mapped[bool] = mapped_column(Boolean, default=False)
     trunk: Mapped[bool] = mapped_column(Boolean, default=False)
+    rubber: Mapped[bool] = mapped_column(Boolean, default=False)
+    holder: Mapped[bool] = mapped_column(Boolean, default=False)
+    charger: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String, nullable=True)
 
 class Pledge(Base):
