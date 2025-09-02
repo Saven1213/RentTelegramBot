@@ -14,7 +14,7 @@ from bot.db.crud.config import DB_PATH
 
 import json
 
-from bot.db.crud.bike import get_bike_by_id, get_all_bikes, update_bike_to, delete_bike
+from bot.db.crud.bike import get_bike_by_id, get_all_bikes, update_bike_to, delete_bike, update_bike_prices
 from bot.db.crud.debts import get_debts, add_debt, remove_debt
 from bot.db.crud.equips import save_equips, get_equips_user
 from bot.db.crud.mix_conn import rent_bike
@@ -3046,8 +3046,155 @@ async def delete_bike_edit(callback: CallbackQuery):
     await callback.answer()
 
 
+class ChangePrices(StatesGroup):
+    waiting_title = State()
+    waiting_day = State()
+    waiting_week = State()
+    waiting_month = State()
+
+
+def back_kb_price():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать сначала", callback_data="change_prices")]]
+    )
 
 
 
+@router.callback_query(F.data == 'change_prices')
+async def change_prices(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ChangePrices.waiting_title)
+    msg = await callback.message.edit_text(
+        "Введите название байка - dio, jog, gear",
+        reply_markup=back_kb()
+    )
+    await state.update_data(msg_for_del=msg.message_id)
+
+
+
+@router.message(ChangePrices.waiting_title)
+async def wait_title(message: Message, state: FSMContext, bot: Bot):
+    title = message.text.strip().lower()
+    tg_id = message.from_user.id
+    data = await state.get_data()
+    msg_del = data.get('msg_for_del')
+
+
+    try:
+        if msg_del:
+            await bot.delete_message(chat_id=tg_id, message_id=msg_del)
+        await bot.delete_message(chat_id=tg_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
+
+    valid_titles = ['dio', 'jog', 'gear']
+    if title in valid_titles:
+        await state.update_data(title=title)
+        await state.set_state(ChangePrices.waiting_day)
+        msg = await message.answer(
+            "Введите цену за день (только цифры):",
+            reply_markup=back_kb_price()
+        )
+        await state.update_data(msg_for_del=msg.message_id)
+    else:
+        msg = await message.answer("❌ Введите корректное название: dio, jog, gear", reply_markup=back_kb())
+        await state.update_data(msg_for_del=msg.message_id)
+
+
+
+@router.message(ChangePrices.waiting_day)
+async def wait_day_price(message: Message, state: FSMContext, bot: Bot):
+    tg_id = message.from_user.id
+    data = await state.get_data()
+    msg_del = data.get('msg_for_del')
+
+    try:
+        if msg_del:
+            await bot.delete_message(chat_id=tg_id, message_id=msg_del)
+        await bot.delete_message(chat_id=tg_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
+
+    if not message.text.isdigit():
+        msg = await message.answer("❌ Введите только цифры для цены за день", reply_markup=back_kb_price())
+        await state.update_data(msg_for_del=msg.message_id)
+        return
+
+    await state.update_data(day=int(message.text))
+    await state.set_state(ChangePrices.waiting_week)
+    msg = await message.answer("Введите цену за неделю (только цифры):", reply_markup=back_kb_price())
+    await state.update_data(msg_for_del=msg.message_id)
+
+
+
+@router.message(ChangePrices.waiting_week)
+async def wait_week_price(message: Message, state: FSMContext, bot: Bot):
+    tg_id = message.from_user.id
+    data = await state.get_data()
+    msg_del = data.get('msg_for_del')
+
+    try:
+        if msg_del:
+            await bot.delete_message(chat_id=tg_id, message_id=msg_del)
+        await bot.delete_message(chat_id=tg_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
+
+    if not message.text.isdigit():
+        msg = await message.answer("❌ Введите только цифры для цены за неделю", reply_markup=back_kb_price())
+        await state.update_data(msg_for_del=msg.message_id)
+        return
+
+    await state.update_data(week=int(message.text))
+    await state.set_state(ChangePrices.waiting_month)
+    msg = await message.answer("Введите цену за месяц (только цифры):", reply_markup=back_kb_price())
+    await state.update_data(msg_for_del=msg.message_id)
+
+
+
+@router.message(ChangePrices.waiting_month)
+async def wait_month_price(message: Message, state: FSMContext, bot: Bot):
+    tg_id = message.from_user.id
+    data = await state.get_data()
+    msg_del = data.get('msg_for_del')
+
+    try:
+        if msg_del:
+            await bot.delete_message(chat_id=tg_id, message_id=msg_del)
+        await bot.delete_message(chat_id=tg_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
+
+    if not message.text.isdigit():
+        msg = await message.answer("❌ Введите только цифры для цены за месяц", reply_markup=back_kb_price())
+        await state.update_data(msg_for_del=msg.message_id)
+        return
+
+    await state.update_data(month=int(message.text))
+
+
+    title = data['title']
+    day = data['day']
+    week = data['week']
+    month = int(message.text)
+
+    await update_bike_prices(title, day, week, month)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='↩️ К редактированию', callback_data='settings_bikes')
+            ]
+        ]
+    )
+
+    await message.answer(
+        f"✅ Цены для байка <b>{title}</b> обновлены:\n"
+        f"• День: {day}\n"
+        f"• Неделя: {week}\n"
+        f"• Месяц: {month}",
+        parse_mode="HTML"
+    )
+
+    await state.clear()
 
 

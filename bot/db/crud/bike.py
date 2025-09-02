@@ -99,6 +99,19 @@ async def delete_bike(bike_id):
 
         await conn.commit()
 
+async def update_bike_prices(title, day, week, month):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET price_day = ?, price_week = ?, price_month = ?
+        WHERE bike_type = ?
+        """, (day, week, month, title))
+
+        await conn.commit()
+
+
+
 
 
 
