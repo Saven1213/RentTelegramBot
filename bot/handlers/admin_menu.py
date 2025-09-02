@@ -2854,11 +2854,23 @@ async def callback_oil(message: Message, state: FSMContext, bot: Bot):
 
     if message.text.isdigit():
         new_oil = int(message.text)
-        await update_bike_to(bike_id, new_oil)
+
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text='↩️ К редактированию', callback_data=f'edit_bike-{bike_id}')]
         ])
+
+        bike = await get_bike_by_id(bike_id)
+
+        if new_oil - bike[4] > 8000:
+            error_msg = await message.answer(
+                "❌ <b>Слишком большой пробег с последнего обслуживания!</b>\n"
+                f"Последний пробег: {bike[4]}, введенный: {new_oil}\nПопробуйте ещё!",
+                parse_mode='HTML'
+            )
+
+            await state.update_data(error_msg_id=error_msg.message_id)
+            return
 
         await message.answer(
             text='✅ <b>Пробег замены масла обновлен</b>',
@@ -2866,6 +2878,7 @@ async def callback_oil(message: Message, state: FSMContext, bot: Bot):
             parse_mode='HTML'
         )
         await state.clear()
+        await update_bike_to(bike_id, new_oil)
 
     else:
 
@@ -2874,6 +2887,7 @@ async def callback_oil(message: Message, state: FSMContext, bot: Bot):
             parse_mode='HTML'
         )
         await state.update_data(error_msg_id=error_msg.message_id)
+
 
 @router.callback_query(F.data.split('-')[0] == 'edit_change_photo')
 async def edit_change_photo(callback: CallbackQuery, state: FSMContext):
