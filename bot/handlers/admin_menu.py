@@ -146,20 +146,20 @@ async def process_users_search(message: Message, state: FSMContext, bot: Bot):
             except:
                 pass
 
-        # Удаляем сообщение с вводом пользователя
+
         try:
             await message.delete()
         except:
             pass
 
-        # Сохраняем поисковый запрос
+
         await state.update_data(
             users_search_query=search_query,
             users_search_results=None,
-            search_msg_id=None  # Очищаем ID сообщения поиска
+            search_msg_id=None
         )
 
-        # Получаем всех пользователей и выполняем поиск
+
         all_users = await get_all_users()
         search_results = []
         search_terms = search_query.lower().split()
@@ -169,7 +169,7 @@ async def process_users_search(message: Message, state: FSMContext, bot: Bot):
             if pd:
                 full_name = f"{pd[2]} {pd[3]}".lower()
 
-                # Поиск по всем терминам (AND логика)
+
                 matches_all = True
                 for term in search_terms:
                     if term not in full_name:
@@ -181,10 +181,10 @@ async def process_users_search(message: Message, state: FSMContext, bot: Bot):
 
         await state.update_data(users_search_results=search_results)
 
-        # Создаем клавиатуру для результатов поиска
+
         builder = InlineKeyboardBuilder()
 
-        for user in search_results[:8]:  # Первые 8 результатов
+        for user in search_results[:8]:
             pd = await get_personal_data(user[1])
             if pd:
                 builder.row(
@@ -194,7 +194,7 @@ async def process_users_search(message: Message, state: FSMContext, bot: Bot):
                     )
                 )
 
-        # Добавляем кнопки навигации
+
         action_buttons = [
             InlineKeyboardButton(text="🗑️ Сбросить поиск", callback_data='view_users_reset_search'),
             InlineKeyboardButton(text='⚙️ В админ меню', callback_data='admin_main')
@@ -215,18 +215,18 @@ async def process_users_search(message: Message, state: FSMContext, bot: Bot):
 
 @router.callback_query(F.data == 'view_users_reset_search')
 async def reset_users_search(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    # Сбрасываем поиск
+
     await state.update_data(
         users_search_query='',
         users_search_results=None
     )
 
-    # Получаем всех пользователей
+
     all_users = await get_all_users()
 
     builder = InlineKeyboardBuilder()
 
-    # Первые 8 пользователей
+
     for user in all_users[:8]:
         pd = await get_personal_data(user[1])
         if pd:
@@ -237,7 +237,7 @@ async def reset_users_search(callback: CallbackQuery, state: FSMContext, bot: Bo
                 )
             )
 
-    # Кнопки пагинации если пользователей больше 8
+
     if len(all_users) > 8:
         total_pages = (len(all_users) + 7) // 8
         nav_buttons = [
@@ -263,7 +263,7 @@ async def reset_users_search(callback: CallbackQuery, state: FSMContext, bot: Bo
             parse_mode='HTML'
         )
     except TelegramBadRequest:
-        # Если сообщение недоступно, отправляем новое
+
         await callback.message.answer(
             text,
             reply_markup=builder.as_markup(),
@@ -276,7 +276,7 @@ async def reset_users_search(callback: CallbackQuery, state: FSMContext, bot: Bo
 @router.callback_query(F.data.startswith('view_users'))
 async def view_users_admin(callback: CallbackQuery, state: FSMContext, bot: Bot):
     try:
-        # Получаем текущие данные из state
+
         state_data = await state.get_data()
         search_query = state_data.get('users_search_query', '')
         search_results = state_data.get('users_search_results')
@@ -559,109 +559,123 @@ async def current_rent_user_admin(callback: CallbackQuery):
 
 
 
-user_selections = {}
+ITEMS = ["шлем", "багажник", "цепь", "сумка", "резинка", "держатель", "зарядка"]
+CODE_MAP = {
+    "шлем": "h",
+    "багажник": "b",
+    "цепь": "c",
+    "сумка": "s",
+    "резинка": "r",
+    "держатель": "d",
+    "зарядка": "z",
+}
 
-# -------------------------------
-# CallbackData для toggle-кнопок
+CODE_TO_ITEM = {v: k for k, v in CODE_MAP.items()}
+
+
 class ItemToggleCallback(CallbackData, prefix="toggle"):
     item: str
     order_id: str
     bike_id: str
 
-# -------------------------------
-# Генерация клавиатуры с красный/зелёный кружок
-def get_items_keyboard(user_id: int, order_id: str, bike_id: str):
-    items = ["шлем", "багажник", "цепь", "сумка"]  # новый предмет добавлен
 
-    # получаем текущие выборы или создаём новый словарь
-    selections = user_selections.get(user_id, {})
+class EquipmentSelection(StatesGroup):
+    choosing = State()
 
-    # добавляем новые предметы, которых ещё нет
-    for item in items:
-        if item not in selections:
-            selections[item] = False
 
-    # сохраняем обновлённый словарь обратно
-    user_selections[user_id] = selections
-
+def get_items_keyboard(selections: dict, order_id: str, bike_id: str) -> InlineKeyboardMarkup:
     inline_keyboard = []
-
-    for item in items:
-        state = "🟢" if selections[item] else "🔴"
-        button = InlineKeyboardButton(
-            text=f"{item} {state}",
+    for item in ITEMS:
+        emoji = "🟢" if selections.get(item, False) else "🔴"
+        btn = InlineKeyboardButton(
+            text=f"{item} {emoji}",
             callback_data=ItemToggleCallback(item=item, order_id=order_id, bike_id=bike_id).pack()
         )
-        inline_keyboard.append([button])
+        inline_keyboard.append([btn])
 
-    # формируем строку выбранных предметов
-    selected_items = [item for item, state in selections.items() if state]
-    code_map = {"шлем": "h", "багажник": "b", "цепь": "c", "сумка": "s"}
-    selected_items_str = "".join(code_map[item] for item in selected_items)
-    callback_data = f"confirm_equipment-{order_id}-{bike_id}-{selected_items_str}"
 
-    confirm_button = InlineKeyboardButton(
+    selected_codes = "".join(CODE_MAP[item] for item in ITEMS if selections.get(item, False))
+
+    confirm_btn = InlineKeyboardButton(
         text="✅ Подтвердить экипировку",
-        callback_data=callback_data
+        callback_data=f"confirm_equipment-{order_id}-{bike_id}-{selected_codes}"
     )
-    inline_keyboard.append([confirm_button])
-    keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
-    return keyboard
+    inline_keyboard.append([confirm_btn])
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
 @router.callback_query(F.data.split('-')[0] == 'confirm_rent_admin')
-async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
-    user_id = callback.from_user.id
+async def confirm_but_rent(callback: CallbackQuery, bot: Bot, state: FSMContext):
     parts = callback.data.split('-')
     order_id = parts[1]
     bike_id = parts[2]
 
-    # создаём словарь для хранения выбора экипировки
-    user_selections[user_id] = {"шлем": False, "багажник": False, "цепь": False, "сумка": False}
 
-    # показываем toggle-клавиатуру экипировки
+    selections = {item: False for item in ITEMS}
+    await state.set_state(EquipmentSelection.choosing)
+    await state.update_data(order_id=order_id, bike_id=bike_id, selections=selections)
+
     await callback.message.edit_text(
-        f"Выберите экипировку:",
-        reply_markup=get_items_keyboard(user_id, order_id, bike_id)
+        "Выберите экипировку:",
+        reply_markup=get_items_keyboard(selections, order_id, bike_id)
     )
 
 
 @router.callback_query(ItemToggleCallback.filter())
-async def toggle_item_callback(query: CallbackQuery, callback_data: ItemToggleCallback):
-    user_id = query.from_user.id
-    if user_id not in user_selections:
-        user_selections[user_id] = {"шлем": False, "багажник": False, "цепь": False}
+async def toggle_item_callback(query: CallbackQuery, callback_data: ItemToggleCallback, state: FSMContext):
+    # получаем текущее состояние пользователя
+    data = await state.get_data()
+    order_id = data.get("order_id")
+    bike_id = data.get("bike_id")
+    selections = data.get("selections")
 
 
-    user_selections[user_id][callback_data.item] = not user_selections[user_id][callback_data.item]
+    if not selections or order_id != callback_data.order_id:
+        order_id = callback_data.order_id
+        bike_id = callback_data.bike_id
+        selections = {item: False for item in ITEMS}
+
+
+    if callback_data.item in ITEMS:
+        selections[callback_data.item] = not selections.get(callback_data.item, False)
+
+
+    await state.update_data(order_id=order_id, bike_id=bike_id, selections=selections)
+    await state.set_state(EquipmentSelection.choosing)
 
 
     await query.message.edit_reply_markup(
-        reply_markup=get_items_keyboard(user_id, callback_data.order_id, callback_data.bike_id)
+        reply_markup=get_items_keyboard(selections, order_id, bike_id)
     )
     await query.answer()
 
 
 @router.callback_query(F.data.split('-')[0] == 'confirm_equipment')
-async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
+async def confirm_equipment_handler(callback: CallbackQuery, bot: Bot, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split('-')
     order_id = parts[1]
     bike_id = parts[2]
+    selected_codes = parts[3] if len(parts) > 3 else ""
+
+
+    selected_items = [CODE_TO_ITEM[c] for c in selected_codes if c in CODE_TO_ITEM]
+
+
+    helmet  = "шлем"     in selected_items
+    chain   = "цепь"     in selected_items
+    box     = "сумка"    in selected_items
+    trunk   = "багажник" in selected_items
+    rubber  = "резинка"  in selected_items
+    holder  = "держатель" in selected_items
+    charger = "зарядка"  in selected_items
+
 
     order = await get_order(order_id)
-
-    selected_codes = parts[3] if len(parts) > 3 else ""
-    code_to_item = {"h": "шлем", "b": "багажник", "c": "цепь", "s": "сумка"}
-    selected_items = [code_to_item[c] for c in selected_codes if c in code_to_item]
-
-    helmet = 'шлем' in selected_items
-    chain = 'цепь' in selected_items
-    box = 'сумка' in selected_items
-    trunk = 'багажник' in selected_items
-
-    await save_equips(order[1], helmet, chain, box, trunk)
+    await save_equips(order[1], helmet, chain, box, trunk, rubber, holder, charger)
     await change_status_order(order_id, 'success')
+
 
     order = await get_order(order_id)
     order_msgs_json = order[-3]
@@ -713,8 +727,14 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot):
         reply_markup=user_keyboard
     )
 
+
     await rent_bike(order[1], int(bike_id), order[-2])
     await add_pledge(order[1], pledge, order_id, int(bike_id))
+
+
+    await state.clear()
+
+
 
 @router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
 async def cancel_rent_admin(callback: CallbackQuery, bot: Bot):
@@ -1259,23 +1279,27 @@ async def equipment_user(callback: CallbackQuery):
     equip_user = await get_equips_user(user_id)
     pd = await get_personal_data(user_id)
 
-
     first_name = pd[2] or ""
     last_name = pd[3] or ""
     full_name = f"{first_name} {last_name}".strip()
 
 
-    available_equips = []
-    if equip_user[2]:  # helmet
-        available_equips.append("🪖 Шлем")
-    if equip_user[3]:  # chain
-        available_equips.append("⛓️ Цепь")
-    if equip_user[4]:  # box
-        available_equips.append("🎒 Сумка/кофр")
-    if equip_user[5]:  # trunk
-        available_equips.append("🧳 Багажник")
+    equips_map = {
+        2: "🪖 Шлем",
+        3: "⛓️ Цепь",
+        4: "🎒 Термокороб",
+        5: "🧳 Багажник",
+        6: "🪢 Резинка",
+        7: "📱 Держатель для телефона",
+        8: "🔌 Зарядка",
+    }
 
-    # Формируем текст
+    # собираем список доступной экипировки
+    available_equips = [
+        equips_map[idx] for idx, value in enumerate(equip_user) if idx in equips_map and value
+    ]
+
+    # текст ответа
     if available_equips:
         text = (
             f"🛡️ <b>ЭКИПИРОВКА ПОЛЬЗОВАТЕЛЯ</b>\n\n"
@@ -1302,6 +1326,7 @@ async def equipment_user(callback: CallbackQuery):
         parse_mode='HTML',
         reply_markup=keyboard
     )
+
 
 
 @router.callback_query(F.data == 'toggle_admin')

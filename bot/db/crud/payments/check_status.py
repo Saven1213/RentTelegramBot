@@ -43,7 +43,7 @@ async def check_payments(bot: Bot) -> None:
 
 
             await cursor.execute("""
-            SELECT username
+            SELECT *
             FROM users
             WHERE tg_id = ?
             """, (user_id, ))

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import timezone
+
 
 from aiogram import Bot, Dispatcher
 
@@ -8,7 +8,7 @@ from bot.db import async_main
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from bot.db.crud.payments.check_status import check_payments
+
 from middlewares.ban_middleware import BanMiddleware
 
 from bot.scheduler import check_rent_status, deactivate_expired_rents, delete_old_history, check_payments_job, \
