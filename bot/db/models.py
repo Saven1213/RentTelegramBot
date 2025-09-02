@@ -57,6 +57,17 @@ class Bike(Base):
 
     vin: Mapped[str] = mapped_column(String, nullable=True)
 
+class AdminMsg(Base):
+    __tablename__ = 'admin_msgs'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    user_id: Mapped[int] = mapped_column(Integer)
+
+    admin_chat_id: Mapped[int] = mapped_column(Integer)
+
+    msg_id: Mapped[int] = mapped_column(Integer)
+
 
 
 

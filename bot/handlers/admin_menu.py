@@ -736,38 +736,127 @@ async def confirm_equipment_handler(callback: CallbackQuery, bot: Bot, state: FS
 
 
 
-@router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
-async def cancel_rent_admin(callback: CallbackQuery, bot: Bot):
-    data = callback.data.split('-')[1]
-    order = await get_order(data)
-    msg_dict = json.loads(order[-3])
+class CancelRentStates(StatesGroup):
+    waiting_comment = State()
 
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_rent_admin')
+async def cancel_rent_admin(callback: CallbackQuery, state: FSMContext):
+    order_id = callback.data.split('-')[1]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Написать комментарий", callback_data=f"cancel_comment-{order_id}")],
+        [InlineKeyboardButton(text="❌ Без комментария", callback_data=f"cancel_no_comment-{order_id}")]
+    ])
+    await callback.message.edit_text(
+        "Выберите, хотите ли добавить комментарий при отмене аренды?",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_comment')
+async def cancel_rent_with_comment(callback: CallbackQuery, state: FSMContext):
+    order_id = callback.data.split('-')[1]
+    await state.update_data(order_id=order_id, admin_msg_id=callback.message.message_id)
+    await state.set_state(CancelRentStates.waiting_comment)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Отменить ввод комментария', callback_data=f'cancel_comment_skip-{order_id}')]
+    ])
+    await callback.message.edit_text(
+        "Введите комментарий к отмене аренды:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.message(CancelRentStates.waiting_comment)
+async def process_cancel_comment(message: Message, state: FSMContext, bot: Bot):
+    data_state = await state.get_data()
+    order_id = data_state['order_id']
+    admin_msg_id = data_state.get('admin_msg_id')
+
+    if admin_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=admin_msg_id)
+        except Exception:
+            pass
+
+    comment = message.text.strip()
+    await state.clear()
+
+    await execute_cancel_rent(order_id, bot, comment)
+
+    keyboard_admin = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")],
+    ])
+
+    await message.answer(
+        "❌ Аренда отменена с вашим комментарием.",
+        reply_markup=keyboard_admin
+    )
+
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_no_comment')
+async def cancel_rent_without_comment(callback: CallbackQuery, bot: Bot):
+    order_id = callback.data.split('-')[1]
+    await execute_cancel_rent(order_id, bot)
+    keyboard_admin = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")],
+    ])
+    await callback.message.edit_text(
+        "❌ Аренда отменена без комментария.",
+        reply_markup=keyboard_admin
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == 'cancel_comment_skip')
+async def cancel_rent_skip_comment(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    order_id = callback.data.split('-')[1]
+    admin_msg_id = callback.message.message_id
+    await state.clear()
+    try:
+        await bot.delete_message(chat_id=callback.message.chat.id, message_id=admin_msg_id)
+    except Exception:
+        pass
+    await execute_cancel_rent(order_id, bot)
+    keyboard_admin = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")],
+    ])
+    await callback.message.answer("❌ Аренда отменена без комментария.", reply_markup=keyboard_admin)
+    await callback.answer()
+
+
+async def execute_cancel_rent(order_id: str, bot: Bot, comment: str = None):
+    order = await get_order(order_id)
+    msg_dict = json.loads(order[-3])
 
     for role_name, role_dict in msg_dict.items():
         for chat_id, msg_id in role_dict.items():
             try:
-                if role_name == 'admin':
-                    await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
-                elif role_name == 'user':
-                    await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
+                await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
             except Exception as e:
                 print(f"Ошибка удаления {chat_id=} {msg_id=}: {e}")
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]
-        ]
-    )
+    text = "❌ <i>Администратор отменил ваш запрос на аренду</i>\n\n"
+    if comment:
+        text += f"💬 <b>Комментарий администратора:</b>\n\n<blockquote>{comment}</blockquote>"
 
+    keyboard_user = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🏠 В главное меню", callback_data="main")]]
+    )
 
     await bot.send_message(
         chat_id=order[1],
-        text="❌ <i>Администратор отменил ваш запрос на аренду</i>\n\n",
+        text=text,
         parse_mode='HTML',
-        reply_markup=keyboard
+        reply_markup=keyboard_user
     )
 
     await fail_status(order[2])
+
+
 
 
 

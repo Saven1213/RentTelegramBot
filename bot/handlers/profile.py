@@ -5,12 +5,16 @@ from datetime import datetime
 
 from typing import Union
 
+import json
+
 from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from bot.db.crud.admin_msgs import save_admin_msg, get_admin_msgs, clear_admin_msgs
 from bot.db.crud.bike import get_bike_by_id
 from bot.db.crud.debts import get_debts
 from bot.db.crud.equips import get_equips_user
@@ -20,7 +24,7 @@ from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.create_payment import create_payment
 from bot.db.crud.payments.payments_user import get_user_payments, get_payment_by_id
 from bot.db.crud.photos.map import get_map
-from bot.db.crud.user import get_user
+from bot.db.crud.user import get_user, get_all_users, get_all_admins
 from cardlink._types import Bill, BillStatus
 from bot.config import cl
 
@@ -111,12 +115,17 @@ class Action(StatesGroup):
     first_name = State()
     last_name = State()
     number = State()
+    waiting_comment = State()
 
 
 NAME_RE = re.compile(r"^[A-Za-zА-Яа-яЁё\-]+$")
 
+
 def back_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать сначала", callback_data="action")]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔄 Начать сначала", callback_data="action")]]
+    )
+
 
 def normalize_phone(raw: str) -> str | None:
     s = (raw or "").strip()
@@ -131,8 +140,6 @@ def normalize_phone(raw: str) -> str | None:
         if s.startswith("7") and len(s) == 11:
             return "+7" + s[1:]
     return None
-
-
 
 
 @router.callback_query(lambda c: c.data == "action")
@@ -155,11 +162,9 @@ async def action_fn(message: Message, state: FSMContext, bot: Bot):
         )
         return
 
-
     data = await state.get_data()
     tg_id = message.from_user.id
     msg_user1 = message.message_id
-
 
     await state.set_state(Action.last_name)
     msg2 = await message.answer(
@@ -168,7 +173,6 @@ async def action_fn(message: Message, state: FSMContext, bot: Bot):
         reply_markup=back_kb()
     )
     await state.update_data(first_name=msg_text.capitalize(), msg2=msg2.message_id)
-
 
     try:
         await bot.delete_message(chat_id=tg_id, message_id=data['msg1'])
@@ -194,7 +198,6 @@ async def action_ln(message: Message, state: FSMContext, bot: Bot):
     tg_id = message.from_user.id
     msg_user2 = message.message_id
 
-
     await state.set_state(Action.number)
     msg3 = await message.answer(
         "Хорошо! Теперь введите ваш <b>номер телефона</b>.\n\n"
@@ -203,7 +206,6 @@ async def action_ln(message: Message, state: FSMContext, bot: Bot):
         reply_markup=back_kb()
     )
     await state.update_data(last_name=msg_text.capitalize(), msg3=msg3.message_id)
-
 
     try:
         await bot.delete_message(chat_id=tg_id, message_id=data['msg2'])
@@ -214,17 +216,24 @@ async def action_ln(message: Message, state: FSMContext, bot: Bot):
     except:
         pass
 
-# Ввод номера
+
+class ConfirmData(CallbackData, prefix="confirm"):
+    tg_id: int
+    first_name: str
+    last_name: str
+    number: str
+
+
+
 @router.message(Action.number)
 async def action_number(message: Message, state: FSMContext, bot: Bot):
     tg_id = message.from_user.id
     normalized = normalize_phone(message.text)
     msg_user3 = message.message_id
 
-
     try:
         await bot.delete_message(chat_id=tg_id, message_id=msg_user3)
-    except Exception as e:
+    except:
         pass
 
     if not normalized:
@@ -237,23 +246,204 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
         return
 
     data = await state.get_data()
-    first_name = data.get("first_name", "")
-    last_name  = data.get("last_name", "")
+    await state.clear()  # Очищаем стейт, т.к. всё уйдёт в callback_data
 
-    await add_personal_data(tg_id, first_name, last_name, normalized)
+    await message.answer("✅ Ваша заявка отправлена администраторам. Ожидайте подтверждения.")
+
+    # Клавиатура для админов
+    admin_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="✅ Подтвердить",
+                callback_data=ConfirmData(
+                    tg_id=tg_id,
+                    first_name=data["first_name"],
+                    last_name=data["last_name"],
+                    number=normalized
+                ).pack()
+            ),
+            InlineKeyboardButton(
+                text="❌ Отклонить",
+                callback_data=f"reject-{tg_id}"
+            )
+        ]]
+    )
+
+
+    admins = await get_all_admins()
+    for admin in admins:
+        sent_msg = await bot.send_message(
+            chat_id=admin[1],
+            text=(
+                f"📝 Новый пользователь заполнил анкету:\n"
+                f"<b>{data['first_name']} {data['last_name']}</b>\n"
+                f"Телефон: {normalized}"
+            ),
+            parse_mode="HTML",
+            reply_markup=admin_keyboard
+        )
+        await save_admin_msg(user_id=tg_id, admin_chat_id=admin[1], msg_id=sent_msg.message_id)
+
+
+
+@router.callback_query(ConfirmData.filter())
+async def confirm_user(callback: CallbackQuery, callback_data: ConfirmData, bot: Bot):
+    tg_id = callback_data.tg_id
+    first_name = callback_data.first_name
+    last_name = callback_data.last_name
+    number = callback_data.number
+
+
+    await add_personal_data(tg_id=tg_id, first_name=first_name, last_name=last_name, number=number)
+
+
+    admin_msgs = await get_admin_msgs(user_id=tg_id)
+    for admin_chat_id, msg_id in admin_msgs:
+        try:
+            await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+        except:
+            pass
+    await clear_admin_msgs(user_id=tg_id)
+
+    await bot.send_message(
+        chat_id=tg_id,
+        text="✅ Ваша заявка подтверждена администратором.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
+        )
+    )
+    await callback.answer()
+
+    await callback.answer("Заявка подтверждена ✅")
+
+
+
+@router.callback_query(F.data.split("-")[0] == "reject")
+async def reject_user(callback: CallbackQuery, state: FSMContext):
+    tg_id = int(callback.data.split("-")[1])
+    await state.update_data(reject_user_id=tg_id)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Написать комментарий", callback_data=f"reject_comment-{tg_id}")],
+        [InlineKeyboardButton(text="❌ Без комментария", callback_data=f"reject_no_comment-{tg_id}")]
+    ])
+
+    await callback.message.answer(
+        "Выберите, хотите ли добавить комментарий при отклонении заявки?",
+        reply_markup=keyboard
+    )
+
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.split('-')[0] == "reject_comment")
+async def admin_reject_with_comment(callback: CallbackQuery, state: FSMContext):
+    tg_id = int(callback.data.split("-")[1])
+    await state.set_state(Action.waiting_comment)
+    await state.update_data(reject_user_id=tg_id)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="❌ Пропустить комментарий", callback_data=f"reject_no_comment-{tg_id}")]]
+    )
+
+
+    msg = await callback.message.answer(
+        text="Введите комментарий для пользователя:",
+        reply_markup=keyboard
+    )
+    await state.update_data(comment_msg_id=msg.message_id)
+
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
+    await callback.answer()
+
+
+
+@router.message(Action.waiting_comment)
+async def process_reject_comment(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    tg_id = data['reject_user_id']
+    comment = message.text.strip()
+
+
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+
+
+    if "comment_msg_id" in data:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=data["comment_msg_id"])
+        except TelegramBadRequest:
+            pass
+
+
+    admin_msgs = await get_admin_msgs(user_id=tg_id)
+    for admin_chat_id, msg_id in admin_msgs:
+        try:
+            await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+        except TelegramBadRequest:
+            pass
+    await clear_admin_msgs(user_id=tg_id)
+
+
+    await bot.send_message(
+        chat_id=tg_id,
+        text=f"❌ Ваша заявка отклонена администратором.\n\n💬 Комментарий: \n<blockquote>{comment}</blockquote>",
+        parse_mode='HTML'
+    )
+
+
+    await message.answer("✅ Комментарий отправлен пользователю, заявка закрыта.")
+
     await state.clear()
 
-    kb_done = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
+
+
+@router.callback_query(F.data.startswith("reject_no_comment"))
+async def reject_no_comment(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    tg_id = int(callback.data.split("-")[1])
+
+
+    admin_msgs = await get_admin_msgs(user_id=tg_id)
+    for admin_chat_id, msg_id in admin_msgs:
+        try:
+            await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+        except TelegramBadRequest:
+            pass
+    await clear_admin_msgs(user_id=tg_id)
+
+
+    await bot.send_message(
+        chat_id=tg_id,
+        text="❌ Ваша заявка отклонена администратором."
     )
 
-    await bot.delete_message(chat_id=tg_id, message_id=data['msg3'])
-    await message.answer(
-        f"🎉 Отлично, {first_name} {last_name}!\n\n"
-        "Анкета успешно заполнена. Теперь вы можете перейти в <b>Личный кабинет</b> и продолжить 🚀",
-        parse_mode="HTML",
-        reply_markup=kb_done
-    )
+
+    await callback.message.answer("✅ Заявка отклонена без комментария, уведомление отправлено пользователю.")
+
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
+    await callback.answer()
+    await state.clear()
+
+
+
+
+
+
 
 @router.callback_query(F.data == 'city_map')
 async def city_map(callback: CallbackQuery, bot: Bot, state: FSMContext):
