@@ -18,7 +18,7 @@ from bot.db.crud.bike import get_bike_by_id, get_all_bikes, update_bike_to, dele
 from bot.db.crud.debts import get_debts, add_debt, remove_debt
 from bot.db.crud.equips import save_equips, get_equips_user
 from bot.db.crud.mix_conn import rent_bike
-from bot.db.crud.names import get_personal_data
+from bot.db.crud.names import get_personal_data, get_all_users_have_pd
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.change_status import change_status_order
 from bot.db.crud.payments.get_order import get_order
@@ -27,7 +27,7 @@ from bot.db.crud.photos.bike_rent import get_bike_extra_data, update_bike_photo,
 from bot.db.crud.photos.map import add_photo
 from bot.db.crud.pledge import add_pledge
 from bot.db.crud.rent_data import get_data_rents, get_current_rent, get_user_by_rent_id
-from bot.db.crud.user import get_user, get_all_users, change_role, change_ban_status
+from bot.db.crud.user import get_user, get_all_users, change_role, change_ban_status, get_all_admins
 
 router = Router()
 
@@ -3192,9 +3192,39 @@ async def wait_month_price(message: Message, state: FSMContext, bot: Bot):
         f"• День: {day}\n"
         f"• Неделя: {week}\n"
         f"• Месяц: {month}",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=keyboard
     )
+    admins = await get_all_admins()
+    admin_ids = [admin[1] for admin in admins]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Принято", callback_data="ack_prices")]
+    ])
+    users_pd = await get_all_users_have_pd()
+    for userr in users_pd:
+        tg_id = userr[1]
+        if tg_id in admin_ids:
+            continue  # пропускаем админов
+
+        await bot.send_message(
+            chat_id=tg_id,
+            text=(
+                f"📢 <b>Внимание!</b>\n\n"
+                f"Цены на <b>{title}</b> изменились:\n"
+                f"• Цена за день: <b>{day}</b>\n"
+                f"• Цена за неделю: <b>{week}</b>\n"
+                f"• Цена за месяц: <b>{month}</b>"
+            ),
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
 
     await state.clear()
 
-
+@router.callback_query(F.data == "ack_prices")
+async def ack_prices(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    await callback.answer("Сообщение удалено")
