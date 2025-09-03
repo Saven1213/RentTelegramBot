@@ -10,6 +10,7 @@ from aiosqlite import connect
 from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.check_status import check_payments, check_payment_debts
 
+
 DB_PATH = "rent-bike.db"  # путь к базе
 
 
@@ -30,29 +31,30 @@ async def check_rent_status(bot: Bot):
     try:
         async with aiosqlite.connect(DB_PATH) as conn:
             cursor = await conn.execute(
-                "SELECT user_id, end_time, notified FROM rent_details WHERE status = 'active'"
+                "SELECT id, user_id, end_time, notified FROM rent_details WHERE status = 'active'"
             )
             rows = await cursor.fetchall()
 
         now_utc = datetime.utcnow()
         now_msk = now_utc + timedelta(hours=3)
 
-        for user_id, end_time_str, notified in rows:
+        for id_, user_id, end_time_str, notified in rows:
             if end_time_str and notified == 0:
                 end_time_utc = datetime.fromisoformat(end_time_str)
                 end_time_msk = end_time_utc + timedelta(hours=3)
 
                 notification_hour = 10
 
-                if now_msk.date() == end_time_msk.date():
-                    # если текущее время >= 10:00 и < 11:00
-                    if time(notification_hour, 0) <= now_msk.time() < time(notification_hour + 1, 0):
-                        # считаем оставшееся время
+                # if now_msk.date() == end_time_msk.date():
+                if 1 == 1:
+
+                    # if time(notification_hour, 0) <= now_msk.time() < time(notification_hour + 1, 0):
+                    if 1 == 1:
                         time_left = end_time_msk - now_msk
                         hours_left = int(time_left.total_seconds() // 3600)
                         minutes_left = int((time_left.total_seconds() % 3600) // 60)
 
-                        # отправляем сообщение пользователю
+
                         await bot.send_message(
                             user_id,
                             f"⏰ <b>АРЕНДА ЗАКАНЧИВАЕТСЯ СЕГОДНЯ!</b>\n\n"
@@ -63,15 +65,19 @@ async def check_rent_status(bot: Bot):
                             reply_markup=keyboard
                         )
 
-                        # помечаем, что уведомление отправлено
+
                         async with aiosqlite.connect(DB_PATH) as conn:
                             await conn.execute(
-                                "UPDATE rent_details SET notified = 1 WHERE user_id = ? AND end_time = ?",
+                                "UPDATE rent_details SET notified = 1, pay_later = 1 WHERE user_id = ? AND end_time = ?",
                                 (user_id, end_time_str)
                             )
                             await conn.commit()
 
-                    # print(f"Уведомление отправлено пользователю {user_id}")
+
+
+
+
+
 
     except Exception as e:
         # print(f"Ошибка в check_rent_status: {e}")
@@ -92,7 +98,7 @@ async def deactivate_expired_rents(bot: Bot):
                     end_time = datetime.fromisoformat(end_time_str)
 
                     if end_time <= now_:
-                        # Получаем данные пользователя и скутера ДО обновления
+
                         cursor_user = await db.execute(
                             "SELECT username, bike_id, bike_name FROM users WHERE tg_id = ?",
                             (user_id,)
@@ -118,7 +124,7 @@ async def deactivate_expired_rents(bot: Bot):
                             (user_id,)
                         )
 
-                        # Получаем админов
+
                         cursor_admins = await db.execute(
                             "SELECT tg_id FROM users WHERE admin = 'admin' OR admin = 'moderator'"
                         )
@@ -126,7 +132,7 @@ async def deactivate_expired_rents(bot: Bot):
 
                         await db.commit()
 
-                        # Сообщение пользователю
+
                         end_time_msk = end_time + timedelta(hours=3)
                         keyboard = InlineKeyboardMarkup(inline_keyboard=[
                             [
@@ -148,7 +154,7 @@ async def deactivate_expired_rents(bot: Bot):
                             reply_markup=keyboard
                         )
 
-                        # Сообщение админам
+
                         pd = await get_personal_data(user_id)
 
                         for admin_tuple in admins:
@@ -202,3 +208,17 @@ async def check_payments_job():
 async def check_payments_debts_job():
     from bot.main import bot
     await check_payment_debts(bot)
+
+async def check_pay_later_in_data():
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("""
+        UPDATE rent_details
+        SET pay_later = 0
+        WHERE status = 'unactive'
+        """)
+
+        await conn.commit()
+
+async def check_pay_later_in_data_job():
+    await check_pay_later_in_data()

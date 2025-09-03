@@ -113,6 +113,7 @@ class RentDetail(Base):
     status: Mapped[str] = mapped_column(default='active')  # 'active'/'completed'/'cancelled'
     days: Mapped[int] = mapped_column(Integer)
     pledge: Mapped[int] = mapped_column(Integer)
+    pay_later: Mapped[bool] = mapped_column(Boolean, nullable=True)
 
 class Dept(Base):
     __tablename__ = 'debts'

@@ -19,21 +19,21 @@ async def rent_bike(tg_id: int, bike_id: int, days: int, pledge: float | int = 0
     async with aiosqlite.connect("rent-bike.db") as conn:
         cursor = await conn.cursor()
 
-        # Получаем пользователя
+
         await cursor.execute("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
         user = await cursor.fetchone()
 
-        # Проверяем, не арендует ли уже
+
         if user and user[3] is not None and user[3] != 'null':
             await cursor.execute("SELECT * FROM bikes WHERE id = ?", (user[3],))
             bike = await cursor.fetchone()
             return user, bike, False
 
-        # Получаем скутер
+
         await cursor.execute("SELECT * FROM bikes WHERE id = ?", (bike_id,))
         bike = await cursor.fetchone()
 
-        # Обновляем пользователя и скутер
+
         await cursor.execute(
             "UPDATE users SET bike_id = ?, bike_name = ? WHERE tg_id = ?",
             (bike_id, bike[2], tg_id)
@@ -43,14 +43,14 @@ async def rent_bike(tg_id: int, bike_id: int, days: int, pledge: float | int = 0
             (tg_id, bike_id)
         )
 
-        # Добавляем запись о прокате
+
         start_time = datetime.utcnow()
         end_time = start_time + timedelta(days=int(days))
 
         await cursor.execute(
             """
-            INSERT INTO rent_details (user_id, bike_id, start_time, end_time, days, pledge, status, notified)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO rent_details (user_id, bike_id, start_time, end_time, days, pledge, status, notified, pay_later)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tg_id,
@@ -60,6 +60,7 @@ async def rent_bike(tg_id: int, bike_id: int, days: int, pledge: float | int = 0
                 int(days),
                 pledge,
                 "active",
+                False,
                 False
             )
         )

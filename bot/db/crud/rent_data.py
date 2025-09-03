@@ -59,3 +59,5 @@ async def get_user_by_rent_id(rent_id):
         data = await cursor.fetchone()
 
         return data[0]
+
+

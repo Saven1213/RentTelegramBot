@@ -1931,7 +1931,7 @@ async def show_rent_page(update: Union[Message, CallbackQuery], state: FSMContex
         return
 
     rent = active_rents[current_page]
-    rent_id, user_id, bike_id, notified, start_time, end_time, status, days, pledge = rent
+    rent_id, user_id, bike_id, notified, start_time, end_time, status, days, pledge, pay_later = rent
 
     pd = await get_personal_data(user_id)
     user_name = f"{pd[2]} {pd[3]}" if pd and len(pd) >= 4 else f"Пользователь #{user_id}"
@@ -2165,9 +2165,6 @@ async def sett_bikes(callback: CallbackQuery, state: FSMContext):
         [
 
             InlineKeyboardButton(text='🏷️ Изменить цены', callback_data='change_prices')
-        ],
-        [
-            InlineKeyboardButton(text='🛑 Вывести из аренды', callback_data='delete_scoot')
         ],
         [
             InlineKeyboardButton(text='↩️ В админку', callback_data='admin_main'),
