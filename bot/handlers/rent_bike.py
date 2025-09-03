@@ -9,7 +9,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQu
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from bot.db.crud.bike import get_bike_by_type, get_bike_by_id, get_price
+from bot.db.crud.bike import get_bike_by_type, get_bike_by_id, get_price, get_prices
 from bot.db.crud.mix_conn import rent_bike
 from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.add_fail_status import fail_status
@@ -46,25 +46,44 @@ async def rent_scooter(callback: CallbackQuery):
         ]
     ])
 
-    price_message = """
+
+    bikes = await get_prices()
+
+    prices_dio = None
+    prices_jog = None
+    prices_gear = None
+
+    for bike in bikes:
+        bike_type, price_day, price_week, price_month = bike
+        match bike_type.lower():
+            case 'dio':
+                prices_dio = (price_day, price_week, price_month)
+            case 'jog':
+                prices_jog = (price_day, price_week, price_month)
+            case 'gear':
+                prices_gear = (price_day, price_week, price_month)
+
+
+
+    price_message = f"""
     <code>——————————————————————</code>
     <b>🏍  ТАРИФЫ  🏍</b>  
     <code>——————————————————————</code>
 
     <b>🔵 DIO (50cc)</b>  
-    ┣ 3 дня — <b>500₽</b>  
-    ┣ Неделя — <b>400₽/день</b>  
-    ┗ Месяц — <b>300₽/день</b>  
+    ┣ 3 дня — <b>{prices_dio[0] if prices_dio else '500'}₽/день</b>  
+    ┣ Неделя — <b>{prices_dio[1] if prices_dio else '400'}₽/день</b>  
+    ┗ Месяц — <b>{prices_dio[2] if prices_dio else '300'}₽/день</b>  
 
     <b>🟢 JOG (50cc)</b>  
-    ┣ 3 дня — <b>600₽</b>  
-    ┣ Неделя — <b>500₽/день</b>  
-    ┗ Месяц — <b>400₽/день</b>  
+    ┣ 3 дня — <b>{prices_jog[0] if prices_jog else '600'}₽/день</b>  
+    ┣ Неделя — <b>{prices_jog[1] if prices_jog else '500'}₽/день</b>  
+    ┗ Месяц — <b>{prices_jog[2] if prices_jog else '400'}₽/день</b>  
 
     <b>🔴 GEAR (50cc)</b>  
-    ┣ 3 дня — <b>700₽</b>  
-    ┣ Неделя — <b>600₽/день</b>  
-    ┗ Месяц — <b>500₽/день</b>  
+    ┣ 3 дня — <b>{prices_gear[0] if prices_gear else '700'}₽/день</b>  
+    ┣ Неделя — <b>{prices_gear[1] if prices_gear else '600'}₽/день</b>  
+    ┗ Месяц — <b>{prices_gear[2] if prices_gear else '500'}₽/день</b>  
 
     <code>——————————————————————</code>  
 

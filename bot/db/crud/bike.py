@@ -110,6 +110,37 @@ async def update_bike_prices(title, day, week, month):
 
         await conn.commit()
 
+async def get_prices():
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT bike_type, price_day, price_week, price_month
+        FROM {t}
+        """)
+
+        bikes = await cursor.fetchall()
+        current_prices = []
+
+
+        added = {'dio': False, 'jog': False, 'gear': False}
+
+        for bike in bikes:
+            bike_type = bike[0].lower()
+
+            if bike_type in added and not added[bike_type]:
+                current_prices.append(bike)
+                added[bike_type] = True
+
+
+            if all(added.values()):
+                break
+
+        return current_prices
+
+
+
+
+
 
 
 
