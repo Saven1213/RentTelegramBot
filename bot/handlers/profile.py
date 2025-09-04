@@ -24,6 +24,7 @@ from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.create_payment import create_payment
 from bot.db.crud.payments.payments_user import get_user_payments, get_payment_by_id
 from bot.db.crud.photos.map import get_map
+from bot.db.crud.rent_data import get_rents_active_user, get_rent_by_user_id
 from bot.db.crud.user import get_user, get_all_users, get_all_admins
 from cardlink._types import Bill, BillStatus
 from bot.config import cl
@@ -45,7 +46,7 @@ async def profile(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     await state.clear()
 
-
+    value = await get_rents_active_user(tg_id)
 
     user, personal_data = await get_user_and_data(tg_id)
 
@@ -78,6 +79,18 @@ async def profile(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
         if personal_data is None:
             keyboard_rows.append([InlineKeyboardButton(text="📝 Анкета", callback_data="action")])
+
+    try:
+        if value[0] == 1:
+            keyboard_rows.append(
+                [
+                    InlineKeyboardButton(text='🛵 Продлить аренду', callback_data='extend'),
+                    InlineKeyboardButton(text='❌ Сдать скутер', callback_data='cancel_pay_rent')
+                ]
+            )
+    except TypeError:
+        pass
+
 
 
     keyboard_rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data="main")])
@@ -250,7 +263,7 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
 
     await message.answer("✅ Ваша заявка отправлена администраторам. Ожидайте подтверждения.")
 
-    # Клавиатура для админов
+
     admin_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(

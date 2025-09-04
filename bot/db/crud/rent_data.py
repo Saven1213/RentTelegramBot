@@ -60,4 +60,48 @@ async def get_user_by_rent_id(rent_id):
 
         return data[0]
 
+async def get_rents_active_user(tg_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT pay_later
+        FROM {t}
+        WHERE user_id = ? AND status = 'active' OR status = 'end_soon'
+        """, (tg_id, ))
+
+        data = await cursor.fetchone()
+
+        return data
+
+async def get_rent_by_user_id(user_id):
+    """
+
+
+    :param user_id:
+    :return: all data where status = active
+    """
+
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT *
+        FROM {t}
+        WHERE user_id = ? AND status = 'active'
+        """, (user_id, ))
+
+        data = await cursor.fetchone()
+
+        return data
+
+async def add_new_status(user_id: int, status: str):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET status = ?
+        WHERE user_id = ?
+        """, (status, user_id))
+
+        await conn.commit()
 

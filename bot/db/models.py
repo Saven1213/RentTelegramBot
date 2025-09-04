@@ -175,7 +175,7 @@ class PhotoBikesRent(Base):
 
     file_id: Mapped[str] = mapped_column(String)
 
-    description: Mapped[str] = mapped_column(String(30))
+    description: Mapped[str] = mapped_column(String)
 
 class PhotoMap(Base):
     __tablename__ = 'photo_map'
@@ -192,6 +192,24 @@ class Document(Base):
     bike_id: Mapped[int] = mapped_column(Integer)
 
     file_id: Mapped[str] = mapped_column(String)
+
+
+class SendAction(Base):
+    __tablename__ = 'sent_actions'
+
+    id: Mapped[int] = mapped_column()
+
+    tg_id: Mapped[int] = mapped_column(Integer, unique=True)
+
+    first_name: Mapped[str] = mapped_column(String)
+
+    last_name: Mapped[str] = mapped_column(String)
+
+    number: Mapped[str] = mapped_column(String)
+
+
+
+
 
 
 

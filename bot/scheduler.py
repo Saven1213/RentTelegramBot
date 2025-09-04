@@ -11,7 +11,7 @@ from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.check_status import check_payments, check_payment_debts
 
 
-DB_PATH = "rent-bike.db"  # путь к базе
+DB_PATH = "rent-bike.db"
 
 
 async def check_rent_status(bot: Bot):
@@ -21,10 +21,7 @@ async def check_rent_status(bot: Bot):
             InlineKeyboardButton(text='⏳ Оплачу позже', callback_data='pay_later')
         ],
         [
-            InlineKeyboardButton(text='❌ Не продлевать', callback_data='cancel')
-        ],
-        [
-            InlineKeyboardButton(text="📞 Поддержка", url="t.me/hulkbike_support")
+            InlineKeyboardButton(text='❌ Не продлевать', callback_data='cancel_pay_rent')
         ]
     ])
 
@@ -45,11 +42,12 @@ async def check_rent_status(bot: Bot):
 
                 notification_hour = 10
 
-                # if now_msk.date() == end_time_msk.date():
-                if 1 == 1:
+                if now_msk.date() == end_time_msk.date():
 
-                    # if time(notification_hour, 0) <= now_msk.time() < time(notification_hour + 1, 0):
-                    if 1 == 1:
+
+                    if time(notification_hour, 0) <= now_msk.time() < time(notification_hour + 1, 0):
+                # if 1 == 1:
+                #     if 1 == 1:
                         time_left = end_time_msk - now_msk
                         hours_left = int(time_left.total_seconds() // 3600)
                         minutes_left = int((time_left.total_seconds() % 3600) // 60)
@@ -80,7 +78,7 @@ async def check_rent_status(bot: Bot):
 
 
     except Exception as e:
-        # print(f"Ошибка в check_rent_status: {e}")
+
         pass
 
 async def deactivate_expired_rents(bot: Bot):

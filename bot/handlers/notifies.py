@@ -1,4 +1,7 @@
-from aiogram import Router, F
+from datetime import datetime, timedelta
+
+from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 from aiogram.fsm.state import State, StatesGroup
@@ -6,6 +9,7 @@ from pydantic.v1 import NoneStr
 
 from bot.db.crud.payments.add_fail_status import fail_status
 from bot.db.crud.payments.create_payment import create_payment
+from bot.db.crud.rent_data import get_rent_by_user_id, add_new_status
 from cardlink import CardLink
 from cardlink._types import Bill
 from bot.db.crud.bike import get_price
@@ -23,11 +27,17 @@ router = Router()
 @router.callback_query(F.data.split('-')[0] == 'pay_later')
 async def pay_later(callback: CallbackQuery):
 
+    tg_id = callback.from_user.id
+
     data = callback.data.split('-')[1]
 
     if data != 'none':
         await fail_status(data)
 
+    data_rent = await get_rent_by_user_id(tg_id)
+    end_time = data_rent[5]
+
+    formated = datetime.fromisoformat(end_time) + timedelta(hours=3)
 
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -42,7 +52,7 @@ async def pay_later(callback: CallbackQuery):
         "▫️ Выберите текущую аренду\n"
         "▫️ Нажмите \"Оплатить\"\n\n"
         "⚠️ <b>Внимание!</b>\n"
-        "⏰ <i>Ваша аренда заканчивается через день</i>\n\n"
+       f"⏰ <i>Ваша аренда заканчивается: </i><b>{str(formated).split('.')[0]}</b>\n\n"
         "💡 <i>Не забудьте завершить оплату вовремя</i>",
         parse_mode='HTML',
         reply_markup=keyboard
@@ -87,6 +97,11 @@ class SelectPeriodExtend(StatesGroup):
 
 @router.callback_query(F.data == 'write_time')
 async def write_period(callback: CallbackQuery, state: FSMContext):
+
+    # try:
+    #     await callback.message.delete()
+    # except TelegramBadRequest:
+    #     pass
 
 
     await state.set_state(SelectPeriodExtend.select_period)
@@ -176,6 +191,11 @@ async def extend_back(callback: CallbackQuery):
 async def payment(callback: CallbackQuery):
     from bot.db.crud.user import get_user
 
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
     data = callback.data.split('-')[1]
     tg_id = callback.from_user.id
 
@@ -214,7 +234,6 @@ async def payment(callback: CallbackQuery):
             [InlineKeyboardButton(text='💳 Оплатить', url=created_bill.link_page_url)],
             [InlineKeyboardButton(text='⏳ Отложить оплату', callback_data=f'pay_later-{order_id}')]
         ]
-
     )
     msg = await callback.message.answer(
         text=f"💳 Счет для продления на {data} дней\n"
@@ -224,4 +243,48 @@ async def payment(callback: CallbackQuery):
     )
 
     await create_payment(tg_id, order_id, created_bill.id, price, data, msg.message_id, f'Продление аренды на {text_time}!')
+
+@router.callback_query(F.data == 'cancel_pay_rent')
+async def cancel(callback: CallbackQuery):
+    tg_id = callback.from_user.id
+
+    data_rent = await get_rent_by_user_id(tg_id)
+    end_time = data_rent[5]
+
+    formated = str(datetime.fromisoformat(end_time) + timedelta(hours=3))
+
+    text = (
+        f"<code>┌────────────────────────┐</code>\n"
+        f"<b>  🏁 АРЕНДА ЗАВЕРШЕНА  </b>\n"
+        f"<code>├────────────────────────┤</code>\n"
+        f"<b>│</b> ⏰ <b>Сдать до:</b> {formated.split('.')[0]}\n"
+        f"<b>│</b> 📍 <b>Адрес:</b> Краснодар\n"
+        f"<b>│</b> ▫️ ул. Корницкого, 47\n"
+        f"<code>└────────────────────────┛</code>\n\n"
+        f"📋 <b>Памятка:</b>\n"
+        f"▫️ <b>Личный кабинет</b> - вернуться в профиль\n"
+        f"▫️ <b>Сдать скутер</b> - нажмите при сдаче на базе\n\n"
+        f"💚 <i>Благодарим за выбор <b>Халк байк!</b></i>"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📍 Где база?", url="https://maps.yandex.ru/?text=Краснодар, Корницкого 47")],
+            [InlineKeyboardButton(text="📊 Личный кабинет", callback_data="profile")],
+            [InlineKeyboardButton(text="🛵 Сдать скутер", callback_data="return_bike_confirm")]
+        ]
+    )
+
+
+
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+    # ИСПРАВИТЬ ТУТ ЧТО ТО НЕ ТАК
+    # if data_rent[6] != 'end_soon':
+    #     await add_new_status(data_rent[0], 'end_soon')
+
+
 

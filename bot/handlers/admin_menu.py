@@ -2381,10 +2381,10 @@ async def process_bike_description(message: Message, state: FSMContext, bot: Bot
             pass
 
     description = message.text.strip()
-    if len(description) > 30:
-        sent_message = await message.answer("❌ Описание слишком длинное. Максимум 30 символов")
-        await state.update_data(messages_to_delete=[sent_message.message_id])
-        return
+    # if len(description) > 30:
+    #     sent_message = await message.answer("❌ Описание слишком длинное. Максимум 30 символов")
+    #     await state.update_data(messages_to_delete=[sent_message.message_id])
+    #     return
 
     await state.update_data(description=description)
 

@@ -61,7 +61,7 @@ async def rent_bike(tg_id: int, bike_id: int, days: int, pledge: float | int = 0
                 pledge,
                 "active",
                 False,
-                False
+                0
             )
         )
 
