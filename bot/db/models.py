@@ -197,7 +197,7 @@ class Document(Base):
 class SendAction(Base):
     __tablename__ = 'sent_actions'
 
-    id: Mapped[int] = mapped_column()
+    id: Mapped[str] = mapped_column(primary_key=True)
 
     tg_id: Mapped[int] = mapped_column(Integer, unique=True)
 

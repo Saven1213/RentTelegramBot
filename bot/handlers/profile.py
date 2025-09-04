@@ -7,6 +7,10 @@ from typing import Union
 
 import json
 
+import random
+import os
+
+import aiosqlite
 from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters.callback_data import CallbackData
@@ -16,6 +20,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot.db.crud.admin_msgs import save_admin_msg, get_admin_msgs, clear_admin_msgs
 from bot.db.crud.bike import get_bike_by_id
+from bot.db.crud.config import DB_PATH
 from bot.db.crud.debts import get_debts
 from bot.db.crud.equips import get_equips_user
 from bot.db.crud.mix_conn import get_user_and_data
@@ -237,6 +242,19 @@ class ConfirmData(CallbackData, prefix="confirm"):
     number: str
 
 
+async def generate_secure_uuid():
+    """Генерирует гарантированно уникальный UUID"""
+
+    random_bits = random.getrandbits(128)
+    os_urandom_bits = int.from_bytes(os.urandom(16), 'big')
+
+
+    combined_bits = random_bits ^ os_urandom_bits
+
+    uuid_obj = uuid.UUID(int=combined_bits)
+    return str(uuid_obj).replace('-', '')
+
+
 
 @router.message(Action.number)
 async def action_number(message: Message, state: FSMContext, bot: Bot):
@@ -259,21 +277,22 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
         return
 
     data = await state.get_data()
-    await state.clear()  # Очищаем стейт, т.к. всё уйдёт в callback_data
+
 
     await message.answer("✅ Ваша заявка отправлена администраторам. Ожидайте подтверждения.")
+
+    rand_id = await generate_secure_uuid()
+
+    request_id = str(rand_id)
+
+
 
 
     admin_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(
                 text="✅ Подтвердить",
-                callback_data=ConfirmData(
-                    tg_id=tg_id,
-                    first_name=data["first_name"],
-                    last_name=data["last_name"],
-                    number=normalized
-                ).pack()
+                callback_data=f'confirm_action-{request_id}'
             ),
             InlineKeyboardButton(
                 text="❌ Отклонить",
@@ -281,6 +300,17 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
             )
         ]]
     )
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        INSERT INTO sent_actions
+        (id, tg_id, first_name, last_name, number)
+        VALUES (?, ?, ?, ?, ?)
+        """, (request_id, tg_id, data['first_name'], data['last_name'], normalized))
+
+        await conn.commit()
+
 
 
     admins = await get_all_admins()
@@ -297,37 +327,48 @@ async def action_number(message: Message, state: FSMContext, bot: Bot):
         )
         await save_admin_msg(user_id=tg_id, admin_chat_id=admin[1], msg_id=sent_msg.message_id)
 
+    await state.clear()
+
+@router.callback_query(F.data.split('-')[0] == 'confirm_action')
+async def confirm_user(callback: CallbackQuery, bot: Bot):
+
+    request_id = callback.data.split('-')[1]
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        SELECT tg_id, first_name, last_name, number
+        FROM sent_actions
+        WHERE id = ?
+        """, (request_id, ))
+
+        data = await cursor.fetchone()
 
 
-@router.callback_query(ConfirmData.filter())
-async def confirm_user(callback: CallbackQuery, callback_data: ConfirmData, bot: Bot):
-    tg_id = callback_data.tg_id
-    first_name = callback_data.first_name
-    last_name = callback_data.last_name
-    number = callback_data.number
+        tg_id, first_name, last_name, number = data
 
 
-    await add_personal_data(tg_id=tg_id, first_name=first_name, last_name=last_name, number=number)
+        await add_personal_data(tg_id=tg_id, first_name=first_name, last_name=last_name, number=number)
 
 
-    admin_msgs = await get_admin_msgs(user_id=tg_id)
-    for admin_chat_id, msg_id in admin_msgs:
-        try:
-            await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
-        except:
-            pass
-    await clear_admin_msgs(user_id=tg_id)
+        admin_msgs = await get_admin_msgs(user_id=tg_id)
+        for admin_chat_id, msg_id in admin_msgs:
+            try:
+                await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+            except:
+                pass
+        await clear_admin_msgs(user_id=tg_id)
 
-    await bot.send_message(
-        chat_id=tg_id,
-        text="✅ Ваша заявка подтверждена администратором.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
+        await bot.send_message(
+            chat_id=tg_id,
+            text="✅ Ваша заявка подтверждена администратором.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")]]
+            )
         )
-    )
-    await callback.answer()
+        await callback.answer()
 
-    await callback.answer("Заявка подтверждена ✅")
+        await callback.answer("Заявка подтверждена ✅")
 
 
 
