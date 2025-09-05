@@ -137,6 +137,27 @@ async def get_prices():
 
         return current_prices
 
+async def set_user_null(bike_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET user = NULL
+        WHERE id = ?
+        """, (bike_id, ))
+
+        await conn.commit()
+
+async def change_status_is_free(bike_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET is_free = 1
+        WHERE id = ?
+        """, (bike_id, ))
+
+        await conn.commit()
 
 
 

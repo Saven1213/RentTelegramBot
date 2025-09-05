@@ -624,7 +624,7 @@ async def confirm_but_rent(callback: CallbackQuery, bot: Bot, state: FSMContext)
 
 @router.callback_query(ItemToggleCallback.filter())
 async def toggle_item_callback(query: CallbackQuery, callback_data: ItemToggleCallback, state: FSMContext):
-    # получаем текущее состояние пользователя
+
     data = await state.get_data()
     order_id = data.get("order_id")
     bike_id = data.get("bike_id")
@@ -728,7 +728,7 @@ async def confirm_equipment_handler(callback: CallbackQuery, bot: Bot, state: FS
     )
 
 
-    await rent_bike(order[1], int(bike_id), order[-2])
+    await rent_bike(order[1], int(bike_id), order[-2], pledge)
     await add_pledge(order[1], pledge, order_id, int(bike_id))
 
 
@@ -2363,7 +2363,7 @@ async def process_bike_oil(message: Message, state: FSMContext, bot: Bot):
     ])
 
     sent_message = await message.answer(
-        "📝 <b>Введите описание скутера:</b>\n\n<i>Максимум 30 символов. Например: 'Крутой черный скутер'</i>",
+        "📝 <b>Введите описание скутера:</b>\n\n<i>Например: 'Крутой черный скутер'</i>",
         parse_mode='HTML', reply_markup=keyboard)
     await state.update_data(messages_to_delete=[sent_message.message_id])
 

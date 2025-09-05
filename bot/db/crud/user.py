@@ -1,7 +1,7 @@
 import aiosqlite
 
 from bot.db.crud.bike import change_status_not_free
-from bot.handlers.notifies import write_period
+
 
 from .config import DB_PATH
 
@@ -121,6 +121,17 @@ async def change_ban_status(tg_id: int) -> None:
         await cursor.execute("""
         UPDATE users SET ban = ? WHERE tg_id = ?
         """, (new_ban_status, tg_id))
+
+        await conn.commit()
+
+async def set_null_status_bike(tg_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        UPDATE {t}
+        SET bike_id = NULL, bike_name = NULL
+        WHERE tg_id = ?
+        """, (tg_id, ))
 
         await conn.commit()
 

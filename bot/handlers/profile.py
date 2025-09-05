@@ -352,11 +352,12 @@ async def confirm_user(callback: CallbackQuery, bot: Bot):
 
 
         admin_msgs = await get_admin_msgs(user_id=tg_id)
-        for admin_chat_id, msg_id in admin_msgs:
-            try:
-                await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
-            except:
-                pass
+        for admin_chat_id, msg_id, type_ in admin_msgs:
+            if type_ == 'common':
+                try:
+                    await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+                except:
+                    pass
         await clear_admin_msgs(user_id=tg_id)
 
         await bot.send_message(
@@ -442,11 +443,12 @@ async def process_reject_comment(message: Message, state: FSMContext, bot: Bot):
 
 
     admin_msgs = await get_admin_msgs(user_id=tg_id)
-    for admin_chat_id, msg_id in admin_msgs:
-        try:
-            await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
-        except TelegramBadRequest:
-            pass
+    for admin_chat_id, msg_id, type_ in admin_msgs:
+        if type_ == 'common':
+            try:
+                await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+            except TelegramBadRequest:
+                pass
     await clear_admin_msgs(user_id=tg_id)
 
 
@@ -469,11 +471,12 @@ async def reject_no_comment(callback: CallbackQuery, state: FSMContext, bot: Bot
 
 
     admin_msgs = await get_admin_msgs(user_id=tg_id)
-    for admin_chat_id, msg_id in admin_msgs:
-        try:
-            await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
-        except TelegramBadRequest:
-            pass
+    for admin_chat_id, msg_id, type_ in admin_msgs:
+        if type_ == 'common':
+            try:
+                await bot.delete_message(chat_id=int(admin_chat_id), message_id=int(msg_id))
+            except TelegramBadRequest:
+                pass
     await clear_admin_msgs(user_id=tg_id)
 
 

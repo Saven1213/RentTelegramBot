@@ -1,4 +1,6 @@
 import aiosqlite
+from sqlalchemy.util import assert_arg_type
+
 from .config import DB_PATH
 t = 'equips'
 
@@ -26,5 +28,15 @@ async def get_equips_user(tg_id):
         data = await cursor.fetchone()
 
         return data
+
+async def delete_equips(tg_id):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute(f"""
+        DELETE FROM {t}
+        WHERE tg_id = ?
+        """, (tg_id, ))
+
+        await conn.commit()
 
 
