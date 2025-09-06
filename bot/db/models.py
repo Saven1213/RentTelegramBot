@@ -68,6 +68,8 @@ class AdminMsg(Base):
 
     msg_id: Mapped[int] = mapped_column(Integer)
 
+    type: Mapped[str] = mapped_column(String)
+
 
 
 
@@ -199,13 +201,28 @@ class SendAction(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)
 
-    tg_id: Mapped[int] = mapped_column(Integer, unique=True)
+    tg_id: Mapped[int] = mapped_column(Integer)
 
     first_name: Mapped[str] = mapped_column(String)
 
     last_name: Mapped[str] = mapped_column(String)
 
     number: Mapped[str] = mapped_column(String)
+
+class Delay(Base):
+    __tablename__ = 'delays'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    rent_id: Mapped[int] = mapped_column(Integer)
+
+    tg_id: Mapped[int] = mapped_column(Integer)
+
+    days_delay: Mapped[int] = mapped_column(Integer)
+
+    amount_delay: Mapped[int] = mapped_column(Integer)
+
+
 
 
 

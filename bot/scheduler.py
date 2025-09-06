@@ -6,7 +6,9 @@ from datetime import datetime, timedelta, time
 import aiosqlite
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiosqlite import connect
+from pydantic import BaseModel
 
+from bot.db.crud.bike import get_bike_by_id
 from bot.db.crud.names import get_personal_data
 from bot.db.crud.payments.check_status import check_payments, check_payment_debts
 
@@ -109,18 +111,18 @@ async def deactivate_expired_rents(bot: Bot):
                         bike_info = f"{bike_name} #{bike_id}" if bike_id and bike_name else "не указан"
 
 
-                        await db.execute(
-                            "UPDATE rent_details SET status = 'unactive' WHERE user_id = ? AND end_time = ?",
-                            (user_id, end_time_str)
-                        )
-                        await db.execute(
-                            "UPDATE users SET bike_id = NULL, bike_name = NULL WHERE tg_id = ?",
-                            (user_id,)
-                        )
-                        await db.execute(
-                            "UPDATE bikes SET user = NULL, is_free = 1 WHERE user = ?",
-                            (user_id,)
-                        )
+                        # await db.execute(
+                        #     "UPDATE rent_details SET status = 'unactive' WHERE user_id = ? AND end_time = ?",
+                        #     (user_id, end_time_str)
+                        # )
+                        # await db.execute(
+                        #     "UPDATE users SET bike_id = NULL, bike_name = NULL WHERE tg_id = ?",
+                        #     (user_id,)
+                        # )
+                        # await db.execute(
+                        #     "UPDATE bikes SET user = NULL, is_free = 1 WHERE user = ?",
+                        #     (user_id,)
+                        # )
 
 
                         cursor_admins = await db.execute(
@@ -128,7 +130,7 @@ async def deactivate_expired_rents(bot: Bot):
                         )
                         admins = await cursor_admins.fetchall()
 
-                        await db.commit()
+                        # await db.commit()
 
 
                         end_time_msk = end_time + timedelta(hours=3)
@@ -147,7 +149,9 @@ async def deactivate_expired_rents(bot: Bot):
                             user_id,
                             f"⛔ **Аренда завершена!**\n\n"
                             f"Дата и время окончания: **{end_time_msk.strftime('%Y-%m-%d %H:%M МСК')}**\n\n"
-                            f"Пожалуйста, сдайте скутер на базу. 🚲",
+                            f"Пожалуйста, сдайте скутер на базу в течении часа. 🚲\n\n"
+                            f"*Или можете оплатить продление до этого времени в личном кабинете.*\n\n"
+                            f"⚠️ *Внимание:* Сумма просрочки составляет **150% в день** от дневного тарифа",
                             parse_mode="Markdown",
                             reply_markup=keyboard
                         )
@@ -220,3 +224,103 @@ async def check_pay_later_in_data():
 
 async def check_pay_later_in_data_job():
     await check_pay_later_in_data()
+
+
+class DR(BaseModel):
+    id: int
+    user_id: int
+    bike_id: int
+    notified: int
+    start_time: str
+    end_time: str
+    status: str
+    days: int
+    pay_later: int
+
+
+async def check_delay():
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cursor = await conn.cursor()
+        await cursor.execute("""
+        SELECT * 
+        FROM rent_details
+        WHERE datetime('now', 'utc') > datetime(end_time)
+        AND status = 'active'
+        """)
+
+        delayed_rents = await cursor.fetchall()
+
+
+
+        for rent_row in delayed_rents:
+            dr = DR(
+                id=rent_row[0],
+                user_id=rent_row[1],
+                bike_id=rent_row[2],
+                notified=rent_row[3],
+                start_time=rent_row[4],
+                end_time=rent_row[5],
+                status=rent_row[6],
+                days=rent_row[7],
+                pay_later=rent_row[8]
+            )
+
+            end_time_utc = datetime.fromisoformat(dr.end_time.replace('Z', '+00:00'))
+            time_delayed = datetime.utcnow() - end_time_utc
+
+            if time_delayed >= timedelta(days=1):
+                days_delayed = time_delayed.days
+
+
+                await cursor.execute("""
+                SELECT *
+                FROM delays
+                WHERE rent_id = ?
+                """, (dr.id, ))
+
+                current_delay = await cursor.fetchone()
+
+
+
+
+                await cursor.execute("""
+                SELECT * FROM bikes WHERE id = ?
+                """, (dr.bike_id,))
+
+                bike = await cursor.fetchone()
+
+
+                if not bike:
+                    continue
+
+
+                match dr.days:
+                    case days if days >= 30:
+                        daily_rate = bike[9]
+                    case days if days >= 7:
+                        daily_rate = bike[8]
+                    case days if days >= 3:
+                        daily_rate = bike[7]
+
+                amount_delay = int(daily_rate * 1.5 * days_delayed)
+
+                if current_delay:
+                    await cursor.execute("""
+                    UPDATE delays
+                    SET days_delay = ?, amount_delay = ?
+                    WHERE rent_id = ?
+                    """, (days_delayed, amount_delay, dr.id))
+                else:
+                    await cursor.execute("""
+                    INSERT INTO delays
+                    (rent_id, tg_id, days_delay, amount_delay)
+                    VALUES (?, ?, ?, ?)
+                    """, (dr.id, dr.user_id, days_delayed, amount_delay))
+
+                await conn.commit()
+
+async def check_delay_job():
+    await check_delay()
+
+
+
