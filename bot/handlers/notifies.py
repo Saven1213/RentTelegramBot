@@ -9,6 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from bot.db.crud.admin_msgs import save_admin_msg, get_admin_msgs
 from bot.db.crud.debts import get_debts
+from bot.db.crud.delays import get_delays_user, delete_delays
 from bot.db.crud.equips import get_equips_user, delete_equips
 from bot.db.crud.mix_conn import rent_bike
 from bot.db.crud.names import get_personal_data
@@ -311,8 +312,8 @@ async def return_bike(callback: CallbackQuery, bot: Bot):
         keyboard_admin = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text='Подтвердить', callback_data=f'confirm_return_bike-{bike[0]}-{tg_id}'),
-                    InlineKeyboardButton(text='Отменить', callback_data=f'cancel_return_bike-{tg_id}')
+                    InlineKeyboardButton(text='✅ Подтвердить', callback_data=f'confirm_return_bike-{bike[0]}-{tg_id}'),
+                    InlineKeyboardButton(text='❌ Отменить', callback_data=f'cancel_return_bike-{tg_id}')
                 ]
             ]
         )
@@ -386,30 +387,33 @@ async def c_return_bike(callback: CallbackQuery, bot: Bot):
     equips = await get_equips_user(user_id)
 
     available_equip_lst = []
+    try:
+        for i, equip in enumerate(equips):
+            equip_str = str(equip) if equip is not None else '0'
+            match (i, equip_str):
+                case (2, '1'):
+                    available_equip_lst.append("шлем")
+                case (3, '1'):
+                    available_equip_lst.append("цепь")
+                case (4, '1'):
+                    available_equip_lst.append("термокороб")
+                case (5, '1'):
+                    available_equip_lst.append("багажник")
+                case (6, '1'):
+                    available_equip_lst.append("резинка")
+                case (7, '1'):
+                    available_equip_lst.append("держатель")
+                case (8, '1'):
+                    available_equip_lst.append("зарядка")
+                case (0, '1') | (1, '1'):
+                    continue
+                case (_, '1'):
+                    available_equip_lst.append(f"Экипировка #{i + 1}")
+                case (_, '0'):
+                    continue
+    except TypeError:
+        available_equip_lst = []
 
-    for i, equip in enumerate(equips):
-        equip_str = str(equip) if equip is not None else '0'
-        match (i, equip_str):
-            case (2, '1'):
-                available_equip_lst.append("шлем")
-            case (3, '1'):
-                available_equip_lst.append("цепь")
-            case (4, '1'):
-                available_equip_lst.append("термокороб")
-            case (5, '1'):
-                available_equip_lst.append("багажник")
-            case (6, '1'):
-                available_equip_lst.append("резинка")
-            case (7, '1'):
-                available_equip_lst.append("держатель")
-            case (8, '1'):
-                available_equip_lst.append("зарядка")
-            case (0, '1') | (1, '1'):
-                continue
-            case (_, '1'):
-                available_equip_lst.append(f"Экипировка #{i + 1}")
-            case (_, '0'):
-                continue
 
     text = (
         "🛡️ <b>ЭКИПИРОВКА ПОЛЬЗОВАТЕЛЯ</b>\n\n"
@@ -430,10 +434,19 @@ async def c_return_bike(callback: CallbackQuery, bot: Bot):
 
     )
 
+    delays = await get_delays_user(user_id)
+
+    if delays:
+        text += (
+            '❗️❗️❗️ <b>ПРОСРОЧКА ПОЛЬЗОВАТЕЛЯ</b> ❗️❗️❗️\n'
+            f'  Сумма: {delays[4]}'
+        )
+
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text='✅ Все проверил', callback_data=f'check_pledge-{bike_id}-{user_id}')
+                InlineKeyboardButton(text='✅ Все проверил', callback_data=f'check_pledge-{bike_id}-{user_id}'),
+                InlineKeyboardButton(text='❌ Отклонить сдачу', callback_data=f'cancel_return_bike-{user_id}')
             ]
         ]
     )
@@ -522,7 +535,23 @@ async def end_rent(callback: CallbackQuery, bot: Bot):
 @router.callback_query(F.data.split('-')[0] == 'complete_rent')
 async def complete_rent(callback: CallbackQuery, bot: Bot):
     user_id = callback.data.split('-')[1]
+
+    delays = await get_delays_user(user_id)
+
+
+
+
+
     bike_id = callback.data.split('-')[2]
+
+    order_id = f'order-{uuid.uuid4().hex[:8]}-{bike_id}-{user_id}'
+
+
+
+    if delays:
+        description = f'Оплата просрочки на {delays[4]} р'
+        await delete_delays(tg_id=user_id)
+        await create_payment(tg_id=user_id, order_id=order_id, id_='hands', price=delays[4], time=0, message_id='none', description=description, status='success')
 
     await add_new_status(user_id=int(user_id), status='unactive')
 
@@ -565,7 +594,32 @@ async def complete_rent(callback: CallbackQuery, bot: Bot):
 
 
 
+@router.callback_query(F.data.split('-')[0] == 'cancel_return_bike')
+async def cancel_return_bike(
+        callback: CallbackQuery,
+        bot: Bot
+):
+    user_id = callback.data.split('-')[1]
 
+    admin_msgs = await get_admin_msgs(user_id=int(user_id))
+
+    for admin_chat_id, msg_id, type_ in admin_msgs:
+        if type_ == 'return_bike':
+            try:
+                await bot.delete_message(chat_id=admin_chat_id, message_id=msg_id)
+            except TelegramBadRequest:
+                pass
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='🏠 В главное меню', callback_data='main')
+            ]
+        ]
+    )
+
+
+    await bot.send_message(chat_id=user_id, text='❌ Админ отклонил заявку', reply_markup=keyboard)
 
 
 
